@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - db_data:/app/data
+    environment:
+      - SECRET_KEY=change-this-in-production
+      - DATABASE_URL=sqlite:///data/learnapp.db
+    restart: unless-stopped
+
+  frontend-parent:
+    build: ./frontend-parent
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  frontend-child:
+    build: ./frontend-child
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db_data:
