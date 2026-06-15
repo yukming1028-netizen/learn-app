@@ -3,66 +3,65 @@
     <button class="btn btn-outline" @click="$router.back()" style="margin-bottom: 16px;">← 返回</button>
     <h1 style="margin-bottom: 24px;">🔗 綁定子女設備</h1>
 
-    <div class="card" style="text-align: center; padding: 32px;">
-      <p style="margin-bottom: 20px; color: var(--text-light);">
-        請在子女設備上打開 App，取得 QR Code 或 6 位綁定碼，然後在這裡掃描或輸入。
+    <div class="card" style="padding: 24px;">
+      <p style="margin-bottom: 20px; color: var(--text-light); text-align: center;">
+        請在子女設備上打開 App，取得 6 位綁定碼或 QR Code
       </p>
 
-      <!-- Tab switcher -->
-      <div style="display: flex; gap: 8px; margin-bottom: 24px; justify-content: center;">
-        <button class="tab-btn" :class="{ active: activeTab === 'scan' }" @click="activeTab = 'scan'">📷 掃碼</button>
-        <button class="tab-btn" :class="{ active: activeTab === 'code' }" @click="activeTab = 'code'">⌨️ 輸入碼</button>
-      </div>
-
-      <!-- Scan tab -->
-      <div v-if="activeTab === 'scan'">
-        <div class="scan-area" @click="startScan" v-if="!scanning">
-          <div class="scan-placeholder">
-            <span style="font-size: 48px;">📷</span>
-            <p>點擊開始掃描 QR Code</p>
-          </div>
-        </div>
-        <div v-if="scanning" class="scanner-container">
-          <div ref="scannerContainer" id="qr-reader"></div>
-          <button class="btn btn-outline" @click="stopScan">取消掃描</button>
-        </div>
-      </div>
-
-      <!-- Code input tab -->
-      <div v-if="activeTab === 'code'">
-        <p style="margin-bottom: 12px;">請輸入子女設備上顯示的 6 位綁定碼：</p>
+      <!-- 輸入綁定碼 (預設顯示，主要方式) -->
+      <div class="section-title">⌨️ 輸入綁定碼</div>
+      <div style="display: flex; gap: 10px;">
         <input
           v-model="codeInput"
           class="code-input"
-          placeholder="ABC123"
+          placeholder="輸入 6 位碼"
           maxlength="6"
           @keyup.enter="bindByCode"
           style="font-family: 'Courier New', monospace; text-transform: uppercase;"
         />
-        <button class="btn btn-primary" @click="bindByCode" :disabled="!codeInput || binding" style="margin-top: 16px; width: 100%;">
-          {{ binding ? '綁定中...' : '✅ 確認綁定' }}
+        <button class="btn btn-primary" @click="bindByCode" :disabled="!codeInput || binding" style="white-space: nowrap;">
+          {{ binding ? '...' : '確認' }}
         </button>
       </div>
 
-      <!-- Child name input (after scan/bind code resolved, before final bind) -->
-      <div v-if="pendingToken" class="bind-confirm">
-        <div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-          ✅ 已驗證設備！請輸入子女姓名：
-        </div>
-        <input
-          v-model="childName"
-          class="code-input"
-          placeholder="例如：小明"
-          @keyup.enter="confirmBind"
-        />
-        <button class="btn btn-primary" @click="confirmBind" :disabled="!childName || binding" style="margin-top: 12px; width: 100%;">
-          {{ binding ? '綁定中...' : '🎉 完成綁定' }}
-        </button>
-        <button class="btn btn-text" @click="cancelPending" style="margin-top: 8px;">取消</button>
+      <!-- 分隔線 -->
+      <div class="divider">
+        <span>或者</span>
+      </div>
+
+      <!-- 掃碼 (次要方式) -->
+      <div class="section-title">📷 掃描 QR Code</div>
+      <div v-if="!scanning" class="scan-btn" @click="startScan">
+        <span style="font-size: 32px;">📷</span>
+        <p>點擊掃描</p>
+      </div>
+      <div v-if="scanning" class="scanner-container">
+        <div id="qr-reader"></div>
+        <button class="btn btn-outline" @click="stopScan" style="width: 100%; margin-top: 8px;">取消掃描</button>
       </div>
     </div>
 
-    <!-- Already bound children -->
+    <!-- 確認綁定 (輸入子女姓名) -->
+    <div v-if="pendingToken" class="card" style="margin-top: 16px; padding: 24px;">
+      <div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin-bottom: 16px; text-align: center;">
+        ✅ 已驗證設備！請輸入子女姓名：
+      </div>
+      <input
+        v-model="childName"
+        class="code-input"
+        placeholder="例如：小明"
+        style="font-size: 18px; letter-spacing: normal; text-transform: none;"
+        @keyup.enter="confirmBind"
+      />
+      <div style="display: flex; gap: 10px; margin-top: 12px;">
+        <button class="btn btn-outline" @click="cancelPending" style="flex: 1;">取消</button>
+        <button class="btn btn-primary" @click="confirmBind" :disabled="!childName || binding" style="flex: 2;">
+          {{ binding ? '綁定中...' : '🎉 完成綁定' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 已綁定子女 -->
     <div class="card" style="margin-top: 20px;" v-if="children.length > 0">
       <h3 style="margin-bottom: 12px;">已綁定子女（{{ children.length }}/3）</h3>
       <div v-for="child in children" :key="child.id" class="child-item">
@@ -86,14 +85,12 @@ import { useToast } from '../composables/useToast'
 const router = useRouter()
 const toast = useToast()
 
-const activeTab = ref('scan')
 const scanning = ref(false)
 const codeInput = ref('')
 const binding = ref(false)
 const pendingToken = ref('')
 const childName = ref('')
 const children = ref([])
-const scannerContainer = ref(null)
 let html5QrScanner = null
 
 async function loadChildren() {
@@ -105,7 +102,7 @@ async function loadChildren() {
   }
 }
 
-// ─── Scan ───
+// ─── 掃碼 ───
 async function startScan() {
   scanning.value = true
   try {
@@ -118,24 +115,16 @@ async function startScan() {
         stopScan()
         try {
           const payload = JSON.parse(decodedText)
-          if (payload.token && payload.type === 'device_bind') {
-            pendingToken.value = payload.token
-            toast.success('已掃描成功！')
-          } else {
-            // Try using raw text as token
-            pendingToken.value = decodedText
-            toast.success('已掃描成功！')
-          }
+          pendingToken.value = (payload.token && payload.type === 'device_bind') ? payload.token : decodedText
         } catch {
           pendingToken.value = decodedText
-          toast.success('已掃描成功！')
         }
+        toast.success('已掃描成功！')
       },
       () => {}
     )
   } catch (err) {
     toast.error('無法啟動相機，請改用輸入碼')
-    activeTab.value = 'code'
     scanning.value = false
   }
 }
@@ -148,31 +137,20 @@ function stopScan() {
   }
 }
 
-// ─── Code ───
-async function bindByCode() {
+// ─── 輸入碼 ───
+function bindByCode() {
   if (!codeInput.value) return
-  binding.value = true
-  try {
-    // Use the bind code as token reference — backend resolves code → token
-    pendingToken.value = codeInput.value.toUpperCase()
-    codeInput.value = ''
-    toast.success('綁定碼已驗證！')
-  } catch (err) {
-    toast.error('綁定碼無效或已過期')
-  } finally {
-    binding.value = false
-  }
+  pendingToken.value = codeInput.value.toUpperCase().trim()
+  codeInput.value = ''
+  toast.success('碼已輸入，請填寫子女姓名')
 }
 
-// ─── Confirm bind ───
+// ─── 確認綁定 ───
 async function confirmBind() {
   if (!pendingToken.value || !childName.value) return
   binding.value = true
   try {
-    const payload = {
-      child_name: childName.value,
-    }
-    // If pendingToken looks like a 6-char code, send as bind_code, else qr_token
+    const payload = { child_name: childName.value }
     if (pendingToken.value.length === 6 && /^[A-Z0-9]+$/.test(pendingToken.value)) {
       payload.bind_code = pendingToken.value
     } else {
@@ -185,7 +163,9 @@ async function confirmBind() {
     await loadChildren()
     router.push('/dashboard')
   } catch (err) {
-    toast.error(err.response?.data?.detail || '綁定失敗')
+    toast.error(err.response?.data?.detail || '綁定失敗，碼可能已過期')
+    pendingToken.value = ''
+    childName.value = ''
   } finally {
     binding.value = false
   }
@@ -196,7 +176,7 @@ function cancelPending() {
   childName.value = ''
 }
 
-// ─── Unbind ───
+// ─── 解綁 ───
 async function confirmUnbind(child) {
   if (!confirm(`確定要解除「${child.name}」的綁定嗎？`)) return
   try {
@@ -208,44 +188,40 @@ async function confirmUnbind(child) {
   }
 }
 
-onMounted(() => {
-  loadChildren()
-})
-
-onUnmounted(() => {
-  stopScan()
-})
+onMounted(() => { loadChildren() })
+onUnmounted(() => { stopScan() })
 </script>
 
 <style scoped>
-.tab-btn {
-  padding: 8px 24px; border: 2px solid #e0e0e0; background: transparent;
-  border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600;
-  transition: all 0.2s; color: #666;
+.section-title {
+  font-size: 0.9rem; font-weight: 700; color: #666; margin-bottom: 8px;
 }
-.tab-btn.active {
-  border-color: var(--primary); background: var(--primary); color: white;
-}
-
-.scan-area {
-  border: 3px dashed #ccc; border-radius: 16px; padding: 40px; cursor: pointer;
-  transition: all 0.2s;
-}
-.scan-area:hover { border-color: var(--primary); background: #f8faff; }
-.scan-placeholder { color: #999; }
-.scan-placeholder p { margin-top: 12px; }
-
-.scanner-container { margin-top: 16px; }
-#qr-reader { border-radius: 12px; overflow: hidden; margin-bottom: 12px; }
 
 .code-input {
-  font-size: 24px; font-weight: 700; letter-spacing: 6px; text-align: center;
-  border: 2px solid #e0e0e0; border-radius: 12px; padding: 16px; width: 100%;
-  box-sizing: border-box; outline: none;
+  flex: 1; font-size: 24px; font-weight: 700; letter-spacing: 6px; text-align: center;
+  border: 2px solid #e0e0e0; border-radius: 12px; padding: 14px; outline: none;
+  box-sizing: border-box;
 }
 .code-input:focus { border-color: var(--primary); }
 
-.bind-confirm { margin-top: 20px; }
+.divider {
+  display: flex; align-items: center; text-align: center; margin: 20px 0;
+  color: #ccc; font-size: 0.85rem;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; border-bottom: 1px solid #e8e8e8;
+}
+.divider span { padding: 0 12px; }
+
+.scan-btn {
+  border: 2px dashed #ccc; border-radius: 12px; padding: 24px; text-align: center;
+  cursor: pointer; transition: all 0.2s;
+}
+.scan-btn:hover { border-color: var(--primary); background: #f8faff; }
+.scan-btn p { margin-top: 8px; color: #999; font-size: 0.9rem; }
+
+.scanner-container { margin-top: 8px; }
+#qr-reader { border-radius: 12px; overflow: hidden; }
 
 .child-item {
   display: flex; align-items: center; gap: 12px; padding: 12px 0;
@@ -257,10 +233,5 @@ onUnmounted(() => {
   background: #fee; color: #e74c3c; border: 1px solid #fcc;
   border-radius: 8px; padding: 6px 12px; font-size: 0.85rem; cursor: pointer;
   white-space: nowrap;
-}
-
-.btn-text {
-  background: none; border: none; color: #999; cursor: pointer;
-  font-size: 0.9rem; text-decoration: underline;
 }
 </style>
