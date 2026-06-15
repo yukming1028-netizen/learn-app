@@ -20,6 +20,9 @@ export const childAPI = {
   bind: (qrToken, deviceUuid, childName) =>
     api.post('/binding/qr/verify', { qr_token: qrToken, device_uuid: deviceUuid, child_name: childName }),
 
+  bindByCode: (bindCode, deviceUuid, childName) =>
+    api.post('/binding/code/verify', { bind_code: bindCode, device_uuid: deviceUuid, child_name: childName }),
+
   getQuestions: (params) =>
     api.get('/questions', { params }),
 

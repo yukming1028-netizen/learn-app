@@ -3,16 +3,42 @@
   <div v-if="!bound" style="padding: 40px 20px; text-align: center; min-height: 100vh; display: flex; flex-direction: column; justify-content: center;">
     <div style="font-size: 80px; margin-bottom: 20px;">📚</div>
     <h1 style="font-size: 28px; color: var(--primary); margin-bottom: 8px;">親子學伴</h1>
-    <p style="color: #888; margin-bottom: 40px;">讓學習變得好玩！</p>
+    <p style="color: #888; margin-bottom: 32px;">讓學習變得好玩！</p>
 
-    <div v-if="!scanning" class="card" style="margin-bottom: 16px;">
-      <p style="margin-bottom: 16px;">請爸爸媽媽先在家長端生成 QR Code，然後輸入綁定碼：</p>
-      <input class="input" v-model="manualToken" placeholder="輸入綁定碼..." style="margin-bottom: 12px;" />
-      <input class="input" v-model="childName" placeholder="你的名字（可選）" style="margin-bottom: 16px;" />
-      <button class="big-btn big-btn-primary" @click="handleBind">🔗 綁定</button>
+    <!-- Tab switcher -->
+    <div style="display: flex; gap: 8px; margin-bottom: 24px; justify-content: center;">
+      <button class="bind-tab" :class="{ active: bindTab === 'scan' }" @click="bindTab = 'scan'">📷 掃碼綁定</button>
+      <button class="bind-tab" :class="{ active: bindTab === 'code' }" @click="bindTab = 'code'">🔑 輸入綁定碼</button>
     </div>
 
-    <div v-if="scanning" style="padding: 40px;">
+    <!-- Scan tab -->
+    <div v-if="bindTab === 'scan' && !scanning" class="card" style="margin-bottom: 16px;">
+      <p style="margin-bottom: 16px; color: #666;">點擊下方按鈕開啟相機掃描家長端的 QR Code</p>
+      <button class="big-btn big-btn-primary" @click="startScan">📷 開啟相機掃碼</button>
+    </div>
+
+    <!-- Scanner active -->
+    <div v-if="bindTab === 'scan' && scanning" style="margin-bottom: 16px;">
+      <div id="qr-reader" style="width: 100%; max-width: 320px; margin: 0 auto; border-radius: 12px; overflow: hidden;"></div>
+      <button class="big-btn" style="margin-top: 12px; background: #f44336; color: white;" @click="stopScan">❌ 取消掃描</button>
+    </div>
+
+    <!-- Manual code tab -->
+    <div v-if="bindTab === 'code' && !scanning" class="card" style="margin-bottom: 16px;">
+      <p style="margin-bottom: 16px; color: #666;">請輸入家長端顯示的 6 位綁定碼：</p>
+      <input
+        class="input code-input"
+        v-model="manualCode"
+        placeholder="ABCD23"
+        maxlength="6"
+        style="text-align: center; font-size: 24px; font-weight: 800; letter-spacing: 6px; margin-bottom: 12px;"
+      />
+      <input class="input" v-model="childName" placeholder="你的名字（可選）" style="margin-bottom: 16px;" />
+      <button class="big-btn big-btn-primary" @click="handleCodeBind">🔗 綁定</button>
+    </div>
+
+    <!-- Loading -->
+    <div v-if="scanning && bindTab === 'code'" style="padding: 40px;">
       <div style="font-size: 40px;" class="animate-bounce">⏳</div>
       <p>綁定中...</p>
     </div>
@@ -20,7 +46,7 @@
     <p v-if="errorMsg" style="color: var(--danger); margin-top: 16px;">{{ errorMsg }}</p>
   </div>
 
-  <!-- Home screen -->
+  <!-- Home screen (unchanged) -->
   <div v-else style="padding: 20px 20px 100px;">
     <!-- Header -->
     <div style="text-align: center; margin-bottom: 30px; padding-top: 20px;">
@@ -77,7 +103,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { childAPI } from '../composables/api'
 import { getDeviceUUID, isBound, getChildInfo } from '../composables/device'
@@ -85,23 +111,57 @@ import { getDeviceUUID, isBound, getChildInfo } from '../composables/device'
 const router = useRouter()
 const bound = ref(isBound())
 const scanning = ref(false)
-const manualToken = ref('')
+const bindTab = ref('scan')
+const manualCode = ref('')
 const childName = ref('')
 const errorMsg = ref('')
 const childInfo = ref(getChildInfo())
 const progress = ref(null)
 const reviewCount = ref(0)
 
-async function handleBind() {
-  if (!manualToken.value.trim()) {
-    errorMsg.value = '請輸入綁定碼'
-    return
+let qrScanner = null
+
+async function startScan() {
+  errorMsg.value = ''
+  scanning.value = true
+
+  const { Html5Qrcode } = await import('html5-qrcode')
+
+  await new Promise(resolve => setTimeout(resolve, 100)) // wait for DOM
+
+  qrScanner = new Html5Qrcode('qr-reader')
+  try {
+    await qrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      async (decodedText) => {
+        // QR scanned successfully
+        stopScan()
+        await handleQRBind(decodedText)
+      },
+      () => {} // ignore per-frame errors
+    )
+  } catch (err) {
+    errorMsg.value = '無法開啟相機，請改用輸入綁定碼方式'
+    bindTab.value = 'code'
+    scanning.value = false
   }
+}
+
+function stopScan() {
+  if (qrScanner) {
+    qrScanner.stop().then(() => qrScanner.clear()).catch(() => {})
+    qrScanner = null
+  }
+  scanning.value = false
+}
+
+async function handleQRBind(qrToken) {
   scanning.value = true
   errorMsg.value = ''
   try {
     const { data } = await childAPI.bind(
-      manualToken.value.trim(),
+      qrToken,
       getDeviceUUID(),
       childName.value || '小寶貝'
     )
@@ -110,9 +170,37 @@ async function handleBind() {
       localStorage.setItem('childName', data.child_name)
       bound.value = true
       childInfo.value = getChildInfo()
+      loadHomeData()
     }
   } catch (err) {
     errorMsg.value = err.response?.data?.detail || '綁定失敗，請重試'
+  } finally {
+    scanning.value = false
+  }
+}
+
+async function handleCodeBind() {
+  if (!manualCode.value.trim()) {
+    errorMsg.value = '請輸入綁定碼'
+    return
+  }
+  scanning.value = true
+  errorMsg.value = ''
+  try {
+    const { data } = await childAPI.bindByCode(
+      manualCode.value.trim().toUpperCase(),
+      getDeviceUUID(),
+      childName.value || '小寶貝'
+    )
+    if (data.success) {
+      localStorage.setItem('childId', data.child_id)
+      localStorage.setItem('childName', data.child_name)
+      bound.value = true
+      childInfo.value = getChildInfo()
+      loadHomeData()
+    }
+  } catch (err) {
+    errorMsg.value = err.response?.data?.detail || '綁定碼無效或已過期'
   } finally {
     scanning.value = false
   }
@@ -140,4 +228,30 @@ async function loadHomeData() {
 onMounted(() => {
   if (bound.value) loadHomeData()
 })
+
+onUnmounted(() => {
+  stopScan()
+})
 </script>
+
+<style scoped>
+.bind-tab {
+  padding: 10px 20px;
+  border: 2px solid #e0e0e0;
+  background: white;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  color: #666;
+}
+.bind-tab.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
+}
+.code-input {
+  text-transform: uppercase;
+}
+</style>
