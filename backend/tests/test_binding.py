@@ -19,12 +19,26 @@ def test_device_verify_success(client, auth_headers):
     resp = client.post("/api/binding/device/verify", json={
         "qr_token": token,
         "child_name": "小明",
+        "grade": 1,
     }, headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
     assert data["child_id"] is not None
-    assert "小明" in data["welcome_message"]
+    assert data["grade"] == 1
+    assert "小一" in data["grade_label"]
+
+
+def test_device_verify_default_grade(client, auth_headers):
+    """Default grade is 0 (學前預備)."""
+    gen = client.post("/api/binding/device/generate", json={"device_uuid": "dev-grade"})
+    token = gen.json()["qr_token"]
+    resp = client.post("/api/binding/device/verify", json={
+        "qr_token": token,
+        "child_name": "小華",
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["grade"] == 0
 
 
 def test_device_verify_by_bind_code(client, auth_headers):
@@ -34,9 +48,11 @@ def test_device_verify_by_bind_code(client, auth_headers):
     resp = client.post("/api/binding/device/verify", json={
         "bind_code": code,
         "child_name": "小華",
+        "grade": 2,
     }, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+    assert resp.json()["grade"] == 2
 
 
 def test_device_verify_no_auth(client):
@@ -69,7 +85,6 @@ def test_same_device_multiple_children(client, auth_headers):
         }, headers=auth_headers)
         assert resp.status_code == 200
 
-    # Verify 3 children on same device
     resp = client.get("/api/binding/device/shared-device/children")
     assert resp.status_code == 200
     assert len(resp.json()) == 3
@@ -94,6 +109,19 @@ def test_max_children_per_parent(client, auth_headers):
         "child_name": "child4",
     }, headers=auth_headers)
     assert resp.status_code == 400
+
+
+def test_no_device_limit(client, auth_headers):
+    """No limit on number of devices — only children count matters."""
+    # 3 children on 3 different devices is fine
+    for i in range(3):
+        gen = client.post("/api/binding/device/generate", json={"device_uuid": f"device-{i}"})
+        token = gen.json()["qr_token"]
+        resp = client.post("/api/binding/device/verify", json={
+            "qr_token": token,
+            "child_name": f"kid{i}",
+        }, headers=auth_headers)
+        assert resp.status_code == 200
 
 
 def test_parent_unbind_child(client, auth_headers):
@@ -136,6 +164,7 @@ def test_device_list_children(client, auth_headers):
     client.post("/api/binding/device/verify", json={
         "qr_token": token,
         "child_name": "Listed",
+        "grade": 3,
     }, headers=auth_headers)
 
     resp = client.get("/api/binding/device/dev-list/children")
@@ -143,3 +172,5 @@ def test_device_list_children(client, auth_headers):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["name"] == "Listed"
+    assert data[0]["grade"] == 3
+    assert "小三" in data[0]["grade_label"]

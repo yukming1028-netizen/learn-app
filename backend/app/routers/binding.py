@@ -2,7 +2,6 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import distinct
 from app.database import get_db
 from app.config import settings
 from app.models.parent import Parent
@@ -14,6 +13,7 @@ from app.schemas.binding import (
 )
 from app.utils.qr import generate_device_bind_token, verify_device_bind_token
 from app.utils.bind_code import store_bind_code, lookup_bind_code
+from app.utils.grade import compute_current_grade, grade_label
 from app.routers.deps import get_current_parent
 
 router = APIRouter(prefix="/api/binding", tags=["binding"])
@@ -26,7 +26,7 @@ def device_generate(req: DeviceGenerateRequest):
     """Child device generates a QR token + short bind code for parent to scan."""
     token, expires_at = generate_device_bind_token(req.device_uuid)
     expires_ts = expires_at.timestamp()
-    code = store_bind_code(token, 0, expires_ts)  # parent_id unknown yet
+    code = store_bind_code(token, 0, expires_ts)
     return DeviceGenerateResponse(
         qr_token=token,
         bind_code=code,
@@ -42,8 +42,14 @@ def device_list_children(device_uuid: str, db: Session = Depends(get_db)):
     children = db.query(Child).filter(Child.device_uuid == device_uuid).all()
     result = []
     for c in children:
+        # Compute current grade
+        if c.grade_start_date:
+            cur_grade, cur_label = compute_current_grade(c.grade, c.grade_start_date)
+        else:
+            cur_grade, cur_label = c.grade, grade_label(c.grade)
         result.append(DeviceChildOut(
             id=c.id, name=c.name, avatar=c.avatar,
+            grade=cur_grade, grade_label=cur_label,
             parent_email=c.parent.email if c.parent else "",
             total_questions=c.total_questions,
             total_correct=c.total_correct,
@@ -71,41 +77,34 @@ def device_verify(payload: DeviceBindRequest, parent: Parent = Depends(get_curre
 
     device_uuid = data["device_uuid"]
 
-    # Check max children (3)
+    # Check max children per parent (3) — no device limit
     child_count = db.query(Child).filter(Child.parent_id == parent.id).count()
     if child_count >= settings.MAX_CHILDREN_PER_PARENT:
         raise HTTPException(status_code=400, detail=f"已達最大子女數限制（{settings.MAX_CHILDREN_PER_PARENT}名）")
 
-    # Check max devices (3 distinct device_uuids)
-    device_count = db.query(distinct(Child.device_uuid)).filter(
-        Child.parent_id == parent.id,
-        Child.device_uuid.isnot(None),
-    ).count()
-    if device_count >= settings.MAX_CHILDREN_PER_PARENT:
-        existing = db.query(Child).filter(
-            Child.parent_id == parent.id,
-            Child.device_uuid == device_uuid,
-        ).first()
-        if not existing:
-            raise HTTPException(status_code=400, detail=f"已達最大設備數限制（{settings.MAX_CHILDREN_PER_PARENT}台）")
-
-    # Create child profile bound to parent + device
+    # Create child profile
+    now = datetime.now(timezone.utc)
     child = Child(
         parent_id=parent.id,
         name=payload.child_name,
+        grade=payload.grade,
+        grade_start_date=now,
         device_uuid=device_uuid,
-        bound_at=datetime.now(timezone.utc),
+        bound_at=now,
     )
     db.add(child)
     db.commit()
     db.refresh(child)
 
+    g_label = grade_label(payload.grade)
     return BindResult(
         success=True,
         child_id=child.id,
         child_name=child.name,
+        grade=payload.grade,
+        grade_label=g_label,
         device_uuid=device_uuid,
-        welcome_message=f"已成功綁定設備！{child.name}可以開始學習了！🎉",
+        welcome_message=f"已成功綁定！{child.name}（{g_label}）可以開始學習了！🎉",
     )
 
 

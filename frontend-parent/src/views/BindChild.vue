@@ -34,22 +34,37 @@
       </button>
     </div>
 
-    <!-- 輸入姓名 -->
+    <!-- 輸入姓名 + 年級 -->
     <div v-if="showNameInput" class="card" style="margin-top: 16px; padding: 24px;">
       <div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin-bottom: 16px; text-align: center;">
-        ✅ 已驗證設備！請輸入子女姓名：
+        ✅ 已驗證設備！請填寫子女資料：
       </div>
+
+      <!-- 姓名 -->
+      <label class="field-label">子女姓名</label>
       <input
         v-model="childName"
         class="code-input"
         placeholder="例如：小明"
-        style="font-size: 18px; letter-spacing: normal; text-transform: none; margin-bottom: 12px;"
+        style="font-size: 18px; letter-spacing: normal; text-transform: none; margin-bottom: 16px;"
         @keyup.enter="confirmBind"
       />
-      <div style="display: flex; gap: 10px;">
+
+      <!-- 年級 -->
+      <label class="field-label">就讀年級</label>
+      <div class="grade-grid">
+        <button
+          v-for="g in gradeOptions"
+          :key="g.value"
+          :class="['grade-btn', { active: selectedGrade === g.value }]"
+          @click="selectedGrade = g.value"
+        >{{ g.label }}</button>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: 16px;">
         <button class="btn btn-outline" @click="cancelNameInput" style="flex: 1;">取消</button>
         <button class="btn btn-primary" @click="confirmBind" :disabled="!childName || binding" style="flex: 2;">
-          🎉 完成
+          {{ binding ? '綁定中...' : '🎉 完成' }}
         </button>
       </div>
     </div>
@@ -59,7 +74,10 @@
       <h3 style="margin-bottom: 12px;">已綁定子女（{{ children.length }}/3）</h3>
       <div v-for="child in children" :key="child.id" class="child-item">
         <span style="font-size: 24px;">{{ child.avatar }}</span>
-        <span style="flex: 1; font-weight: 600;">{{ child.name }}</span>
+        <div style="flex: 1;">
+          <div style="font-weight: 600;">{{ child.name }}</div>
+          <div style="font-size: 0.8rem; color: var(--text-light);">{{ gradeLabel(child.grade) }}</div>
+        </div>
         <span style="font-size: 0.85rem; color: var(--text-light);">{{ child.total_questions }} 題</span>
         <button class="btn-unbind" @click="confirmUnbind(child)">解除綁定</button>
       </div>
@@ -76,11 +94,27 @@ import { useToast } from '../composables/useToast'
 const router = useRouter()
 const toast = useToast()
 
+const gradeOptions = [
+  { value: 0, label: '學前預備' },
+  { value: 1, label: '小一' },
+  { value: 2, label: '小二' },
+  { value: 3, label: '小三' },
+  { value: 4, label: '小四' },
+  { value: 5, label: '小五' },
+  { value: 6, label: '小六' },
+]
+
+function gradeLabel(g) {
+  const found = gradeOptions.find(o => o.value === g)
+  return found ? found.label : ''
+}
+
 const scanning = ref(false)
 const codeInput = ref('')
 const binding = ref(false)
-const resolvedToken = ref('')   // 已驗證的 token/bind_code，等輸入姓名
+const resolvedToken = ref('')
 const childName = ref('')
+const selectedGrade = ref(0)
 const children = ref([])
 let html5QrScanner = null
 
@@ -94,10 +128,9 @@ async function loadChildren() {
   } catch {}
 }
 
-// ─── 唯一提交按鈕：帶 codeInput 去 verify ───
-async function submit() {
+// ─── 唯一提交按鈕 ───
+function submit() {
   if (!canSubmit.value) return
-  // 直接把輸入的碼當 bind_code，後端驗證
   resolvedToken.value = codeInput.value.toUpperCase().trim()
   codeInput.value = ''
 }
@@ -107,7 +140,10 @@ async function confirmBind() {
   if (!resolvedToken.value || !childName.value) return
   binding.value = true
   try {
-    const payload = { child_name: childName.value }
+    const payload = {
+      child_name: childName.value,
+      grade: selectedGrade.value,
+    }
     if (resolvedToken.value.length === 6 && /^[A-Z0-9]+$/.test(resolvedToken.value)) {
       payload.bind_code = resolvedToken.value
     } else {
@@ -115,10 +151,11 @@ async function confirmBind() {
     }
     const { data } = await api.post('/binding/device/verify', payload)
     toast.success(data.welcome_message || '綁定成功！')
+    // 清空表單，留在綁定頁
     resolvedToken.value = ''
     childName.value = ''
+    selectedGrade.value = 0
     await loadChildren()
-    router.push('/dashboard')
   } catch (err) {
     toast.error(err.response?.data?.detail || '綁定失敗，碼可能已過期')
     resolvedToken.value = ''
@@ -131,14 +168,12 @@ async function confirmBind() {
 function cancelNameInput() {
   resolvedToken.value = ''
   childName.value = ''
+  selectedGrade.value = 0
 }
 
 // ─── 掃碼 ───
 async function toggleScan() {
-  if (scanning.value) {
-    stopScan()
-    return
-  }
+  if (scanning.value) { stopScan(); return }
   scanning.value = true
   try {
     const { Html5Qrcode } = await import('html5-qrcode')
@@ -149,10 +184,7 @@ async function toggleScan() {
       (decodedText) => {
         stopScan()
         let token = decodedText
-        try {
-          const p = JSON.parse(decodedText)
-          if (p.token) token = p.token
-        } catch {}
+        try { const p = JSON.parse(decodedText); if (p.token) token = p.token } catch {}
         resolvedToken.value = token
         toast.success('已掃描成功！')
       },
@@ -189,9 +221,7 @@ onUnmounted(() => { stopScan() })
 </script>
 
 <style scoped>
-.input-row {
-  display: flex; gap: 8px; margin-bottom: 12px;
-}
+.input-row { display: flex; gap: 8px; margin-bottom: 12px; }
 .camera-btn {
   flex-shrink: 0; width: 52px; border: 2px solid #e0e0e0; background: #f8f8f8;
   border-radius: 12px; font-size: 22px; cursor: pointer; transition: all 0.2s;
@@ -200,7 +230,7 @@ onUnmounted(() => { stopScan() })
 .code-input {
   flex: 1; font-size: 22px; font-weight: 700; letter-spacing: 6px; text-align: center;
   border: 2px solid #e0e0e0; border-radius: 12px; padding: 14px; outline: none;
-  box-sizing: border-box;
+  box-sizing: border-box; width: 100%;
 }
 .code-input:focus { border-color: var(--primary); }
 .code-input:disabled { background: #f5f5f5; }
@@ -209,6 +239,22 @@ onUnmounted(() => { stopScan() })
 
 .scanner-container { margin-bottom: 12px; }
 #qr-reader { border-radius: 12px; overflow: hidden; }
+
+.field-label {
+  display: block; font-size: 0.9rem; font-weight: 700; color: #666; margin-bottom: 6px;
+}
+
+.grade-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+}
+.grade-btn {
+  padding: 10px 4px; border: 2px solid #e0e0e0; background: white;
+  border-radius: 10px; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+  transition: all 0.15s; color: #666;
+}
+.grade-btn.active {
+  border-color: var(--primary); background: var(--primary); color: white;
+}
 
 .child-item {
   display: flex; align-items: center; gap: 12px; padding: 12px 0;
