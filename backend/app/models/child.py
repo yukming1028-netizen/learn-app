@@ -13,7 +13,7 @@ class Child(Base):
     name = Column(String(50), default="小寶貝")
     grade = Column(Integer, default=1)  # 1=小一 ... 9=中三
     avatar = Column(String(20), default="🐻")  # emoji
-    device_uuid = Column(String(64), unique=True, nullable=True)
+    device_uuid = Column(String(64), nullable=True, index=True)  # Same device can have multiple children
     bound_at = Column(DateTime, default=datetime.utcnow)
     stickers = Column(JSON, default=list)  # ["🌟", "🐶", ...]
     total_study_minutes = Column(Integer, default=0)

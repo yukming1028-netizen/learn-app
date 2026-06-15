@@ -5,7 +5,6 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api'
 const api = axios.create({ baseURL: API_BASE })
 
 api.interceptors.request.use(config => {
-  // Child app uses device UUID + child_id for auth (no password)
   const childId = localStorage.getItem('childId')
   if (childId) {
     config.headers['X-Child-Id'] = childId
@@ -15,17 +14,21 @@ api.interceptors.request.use(config => {
 
 export default api
 
-// Child-specific API functions (no JWT, uses device binding)
+// Child device API functions
 export const childAPI = {
-  bind: (qrToken, deviceUuid, childName) =>
-    api.post('/binding/qr/verify', { qr_token: qrToken, device_uuid: deviceUuid, child_name: childName }),
+  // Device generates QR/bind code for parent to scan
+  generateBindCode: (deviceUuid) =>
+    api.post('/binding/device/generate', { device_uuid: deviceUuid }),
 
-  bindByCode: (bindCode, deviceUuid, childName) =>
-    api.post('/binding/code/verify', { bind_code: bindCode, device_uuid: deviceUuid, child_name: childName }),
+  // List all children bound to this device
+  getDeviceChildren: (deviceUuid) =>
+    api.get(`/binding/device/${deviceUuid}/children`),
 
-  getQuestions: (params) =>
-    api.get('/questions', { params }),
+  // Device unbinds a child profile
+  unbindChild: (deviceUuid, childId) =>
+    api.post('/binding/device/unbind', { device_uuid: deviceUuid, child_id: childId }),
 
+  // Quiz / questions
   getNextQuestion: (childId, subject) =>
     api.post('/questions/next', { child_id: childId, subject }),
 

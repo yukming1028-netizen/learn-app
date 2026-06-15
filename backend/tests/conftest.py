@@ -72,12 +72,13 @@ def auth_headers(auth_user):
 
 @pytest.fixture
 def child_id(client, auth_headers):
-    """Create a child via QR binding, return child_id."""
-    qr = client.post("/api/binding/qr/generate", headers=auth_headers)
-    token = qr.json()["qr_token"]
-    resp = client.post("/api/binding/qr/verify", json={
+    """Create a child via device binding flow: device generates → parent verifies."""
+    # Device generates QR/bind code
+    gen = client.post("/api/binding/device/generate", json={"device_uuid": "test-uuid-001"})
+    token = gen.json()["qr_token"]
+    # Parent verifies and binds
+    resp = client.post("/api/binding/device/verify", json={
         "qr_token": token,
-        "device_uuid": "test-uuid-001",
         "child_name": "TestKid",
-    })
+    }, headers=auth_headers)
     return resp.json()["child_id"]

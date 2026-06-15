@@ -6,8 +6,8 @@
       </transition>
     </router-view>
 
-    <!-- Bottom nav (hidden during quiz) -->
-    <div v-if="isBound && !isQuizPage" class="bottom-nav">
+    <!-- Bottom nav (only when a child is active) -->
+    <div v-if="showNav" class="bottom-nav">
       <button :class="['nav-item', { active: $route.name === 'Home' }]" @click="$router.push('/')">
         <span class="nav-icon">🏠</span> 主頁
       </button>
@@ -25,12 +25,15 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { isBound } from './composables/device'
+import { hasActiveChild } from './composables/device'
 
 const route = useRoute()
 const isQuizPage = computed(() => route.name === 'Quiz')
+// Reactive: check on each route change
+const childActive = computed(() => hasActiveChild())
+const showNav = computed(() => childActive.value && !isQuizPage.value)
 </script>
 
 <style>

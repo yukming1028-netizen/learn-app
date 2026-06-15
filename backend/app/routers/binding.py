@@ -1,56 +1,98 @@
-"""Binding routes: QR code / bind code generation and verification."""
+"""Binding routes — device generates QR/code, parent scans and binds."""
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import distinct
 from app.database import get_db
 from app.config import settings
 from app.models.parent import Parent
 from app.models.child import Child
-from app.schemas.binding import QRGenerateResponse, QRVerifyRequest, CodeVerifyRequest, BindResult
-from app.utils.qr import generate_qr_token, verify_qr_token
+from app.schemas.binding import (
+    DeviceGenerateRequest, DeviceGenerateResponse,
+    DeviceBindRequest, DeviceUnbindRequest,
+    BindResult, DeviceChildOut,
+)
+from app.utils.qr import generate_device_bind_token, verify_device_bind_token
 from app.utils.bind_code import store_bind_code, lookup_bind_code
 from app.routers.deps import get_current_parent
 
 router = APIRouter(prefix="/api/binding", tags=["binding"])
 
 
-@router.post("/qr/generate", response_model=QRGenerateResponse)
-def generate_qr(parent: Parent = Depends(get_current_parent)):
-    token, expires_at = generate_qr_token(parent.id)
+# ─── Child device: generate QR / bind code ───
+
+@router.post("/device/generate", response_model=DeviceGenerateResponse)
+def device_generate(req: DeviceGenerateRequest):
+    """Child device generates a QR token + short bind code for parent to scan."""
+    token, expires_at = generate_device_bind_token(req.device_uuid)
     expires_ts = expires_at.timestamp()
-    code = store_bind_code(token, parent.id, expires_ts)
-    return QRGenerateResponse(
+    code = store_bind_code(token, 0, expires_ts)  # parent_id unknown yet
+    return DeviceGenerateResponse(
         qr_token=token,
         bind_code=code,
         expires_at=expires_at.isoformat(),
-        parent_id=parent.id,
     )
 
 
-def _do_bind(qr_token: str, device_uuid: str, child_name: str, db: Session) -> BindResult:
-    """Shared binding logic for both QR token and bind code."""
-    data = verify_qr_token(qr_token)
+# ─── Child device: list bound children ───
+
+@router.get("/device/{device_uuid}/children", response_model=list[DeviceChildOut])
+def device_list_children(device_uuid: str, db: Session = Depends(get_db)):
+    """List all child profiles bound to this device (from any parent)."""
+    children = db.query(Child).filter(Child.device_uuid == device_uuid).all()
+    result = []
+    for c in children:
+        result.append(DeviceChildOut(
+            id=c.id, name=c.name, avatar=c.avatar,
+            parent_email=c.parent.email if c.parent else "",
+            total_questions=c.total_questions,
+            total_correct=c.total_correct,
+        ))
+    return result
+
+
+# ─── Parent: scan QR / enter code to bind ───
+
+@router.post("/device/verify", response_model=BindResult)
+def device_verify(payload: DeviceBindRequest, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
+    """Parent scans QR or enters bind code to bind a device to a child profile."""
+    # Resolve token
+    qr_token = payload.qr_token
+    if not qr_token and payload.bind_code:
+        qr_token = lookup_bind_code(payload.bind_code)
+        if not qr_token:
+            raise HTTPException(status_code=400, detail="綁定碼無效或已過期")
+    if not qr_token:
+        raise HTTPException(status_code=400, detail="請提供 QR 碼或綁定碼")
+
+    data = verify_device_bind_token(qr_token)
     if data is None:
         raise HTTPException(status_code=400, detail="綁定碼無效或已過期")
 
-    parent_id = data["parent_id"]
-    parent = db.query(Parent).filter(Parent.id == parent_id).first()
-    if not parent:
-        raise HTTPException(status_code=404, detail="家長帳號不存在")
+    device_uuid = data["device_uuid"]
 
-    # Check max children limit
-    existing_count = db.query(Child).filter(Child.parent_id == parent_id).count()
-    if existing_count >= settings.MAX_CHILDREN_PER_PARENT:
+    # Check max children (3)
+    child_count = db.query(Child).filter(Child.parent_id == parent.id).count()
+    if child_count >= settings.MAX_CHILDREN_PER_PARENT:
         raise HTTPException(status_code=400, detail=f"已達最大子女數限制（{settings.MAX_CHILDREN_PER_PARENT}名）")
 
-    # Check device UUID not already bound
-    existing_child = db.query(Child).filter(Child.device_uuid == device_uuid).first()
-    if existing_child:
-        raise HTTPException(status_code=400, detail="此設備已綁定其他子女帳號")
+    # Check max devices (3 distinct device_uuids)
+    device_count = db.query(distinct(Child.device_uuid)).filter(
+        Child.parent_id == parent.id,
+        Child.device_uuid.isnot(None),
+    ).count()
+    if device_count >= settings.MAX_CHILDREN_PER_PARENT:
+        existing = db.query(Child).filter(
+            Child.parent_id == parent.id,
+            Child.device_uuid == device_uuid,
+        ).first()
+        if not existing:
+            raise HTTPException(status_code=400, detail=f"已達最大設備數限制（{settings.MAX_CHILDREN_PER_PARENT}台）")
 
+    # Create child profile bound to parent + device
     child = Child(
-        parent_id=parent_id,
-        name=child_name,
+        parent_id=parent.id,
+        name=payload.child_name,
         device_uuid=device_uuid,
         bound_at=datetime.now(timezone.utc),
     )
@@ -62,18 +104,36 @@ def _do_bind(qr_token: str, device_uuid: str, child_name: str, db: Session) -> B
         success=True,
         child_id=child.id,
         child_name=child.name,
-        welcome_message=f"哇！{child.name}已成功綁定～讓我們開始學習吧！🎉",
+        device_uuid=device_uuid,
+        welcome_message=f"已成功綁定設備！{child.name}可以開始學習了！🎉",
     )
 
 
-@router.post("/qr/verify", response_model=BindResult)
-def verify_qr(payload: QRVerifyRequest, db: Session = Depends(get_db)):
-    return _do_bind(payload.qr_token, payload.device_uuid, payload.child_name, db)
+# ─── Parent: unbind a child ───
+
+@router.delete("/unbind/{child_id}")
+def parent_unbind_child(child_id: int, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
+    """Parent unbinds (deletes) a child profile."""
+    child = db.query(Child).filter(Child.id == child_id, Child.parent_id == parent.id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="找不到子女")
+    child_name = child.name
+    db.delete(child)
+    db.commit()
+    return {"success": True, "message": f"已解除 {child_name} 的綁定"}
 
 
-@router.post("/code/verify", response_model=BindResult)
-def verify_code(payload: CodeVerifyRequest, db: Session = Depends(get_db)):
-    qr_token = lookup_bind_code(payload.bind_code)
-    if qr_token is None:
-        raise HTTPException(status_code=400, detail="綁定碼無效或已過期")
-    return _do_bind(qr_token, payload.device_uuid, payload.child_name, db)
+# ─── Child device: unbind self ───
+
+@router.post("/device/unbind")
+def device_unbind(payload: DeviceUnbindRequest, db: Session = Depends(get_db)):
+    """Child device removes a specific child profile binding."""
+    child = db.query(Child).filter(
+        Child.id == payload.child_id,
+        Child.device_uuid == payload.device_uuid,
+    ).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="找不到綁定記錄")
+    db.delete(child)
+    db.commit()
+    return {"success": True, "message": "已解除綁定"}

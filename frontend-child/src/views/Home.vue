@@ -1,257 +1,217 @@
 <template>
-  <!-- Bind flow -->
-  <div v-if="!bound" style="padding: 40px 20px; text-align: center; min-height: 100vh; display: flex; flex-direction: column; justify-content: center;">
-    <div style="font-size: 80px; margin-bottom: 20px;">📚</div>
-    <h1 style="font-size: 28px; color: var(--primary); margin-bottom: 8px;">親子學伴</h1>
-    <p style="color: #888; margin-bottom: 32px;">讓學習變得好玩！</p>
+  <div class="home">
+    <!-- 已有綁定的子女 → 顯示主頁 -->
+    <div v-if="activeChild" class="welcome-screen">
+      <div class="child-header">
+        <span class="avatar">{{ activeChild.avatar }}</span>
+        <span class="name">{{ activeChild.name }}</span>
+      </div>
+      <h2>歡迎返嚟學習！</h2>
+      <p class="today-info" v-if="todayQuestions > 0">今日已完成 {{ todayQuestions }} 題</p>
+      <p class="today-info" v-else>今日仲未開始答題呀～</p>
 
-    <!-- Tab switcher -->
-    <div style="display: flex; gap: 8px; margin-bottom: 24px; justify-content: center;">
-      <button class="bind-tab" :class="{ active: bindTab === 'scan' }" @click="bindTab = 'scan'">📷 掃碼綁定</button>
-      <button class="bind-tab" :class="{ active: bindTab === 'code' }" @click="bindTab = 'code'">🔑 輸入綁定碼</button>
+      <div class="subject-grid">
+        <button v-for="s in subjects" :key="s.key" class="subject-card" @click="startQuiz(s.key)">
+          <span class="subject-icon">{{ s.icon }}</span>
+          <span class="subject-name">{{ s.name }}</span>
+        </button>
+      </div>
+
+      <button class="btn-secondary" @click="$router.push('/settings')">⚙️ 切換 / 管理</button>
     </div>
 
-    <!-- Scan tab -->
-    <div v-if="bindTab === 'scan' && !scanning" class="card" style="margin-bottom: 16px;">
-      <p style="margin-bottom: 16px; color: #666;">點擊下方按鈕開啟相機掃描家長端的 QR Code</p>
-      <button class="big-btn big-btn-primary" @click="startScan">📷 開啟相機掃碼</button>
-    </div>
+    <!-- 未綁定 → 顯示 QR / 綁定碼等家長掃 -->
+    <div v-else class="bind-screen">
+      <h2>📱 等待家長綁定</h2>
+      <p class="hint">請家長打開家長端 App，掃描下面嘅 QR Code 或者輸入綁定碼</p>
 
-    <!-- Scanner active -->
-    <div v-if="bindTab === 'scan' && scanning" style="margin-bottom: 16px;">
-      <div id="qr-reader" style="width: 100%; max-width: 320px; margin: 0 auto; border-radius: 12px; overflow: hidden;"></div>
-      <button class="big-btn" style="margin-top: 12px; background: #f44336; color: white;" @click="stopScan">❌ 取消掃描</button>
-    </div>
+      <!-- 綁定碼 -->
+      <div class="bind-code-box" v-if="bindCode">
+        <div class="bind-code">{{ bindCode }}</div>
+        <button class="btn-copy" @click="copyCode">📋 複製</button>
+        <p class="expire-text" v-if="expiresIn > 0">{{ expiresIn }} 秒後過期</p>
+      </div>
 
-    <!-- Manual code tab -->
-    <div v-if="bindTab === 'code' && !scanning" class="card" style="margin-bottom: 16px;">
-      <p style="margin-bottom: 16px; color: #666;">請輸入家長端顯示的 6 位綁定碼：</p>
-      <input
-        class="input code-input"
-        v-model="manualCode"
-        placeholder="ABCD23"
-        maxlength="6"
-        style="text-align: center; font-size: 24px; font-weight: 800; letter-spacing: 6px; margin-bottom: 12px;"
-      />
-      <input class="input" v-model="childName" placeholder="你的名字（可選）" style="margin-bottom: 16px;" />
-      <button class="big-btn big-btn-primary" @click="handleCodeBind">🔗 綁定</button>
-    </div>
+      <!-- QR Code (text placeholder) -->
+      <div class="qr-box" v-if="qrToken">
+        <img v-if="qrImageUrl" :src="qrImageUrl" alt="QR Code" class="qr-img" />
+      </div>
 
-    <!-- Loading -->
-    <div v-if="scanning && bindTab === 'code'" style="padding: 40px;">
-      <div style="font-size: 40px;" class="animate-bounce">⏳</div>
-      <p>綁定中...</p>
-    </div>
+      <button class="btn-primary" @click="generateCode" :disabled="loading">
+        {{ loading ? '生成中...' : '🔄 重新生成綁定碼' }}
+      </button>
 
-    <p v-if="errorMsg" style="color: var(--danger); margin-top: 16px;">{{ errorMsg }}</p>
-  </div>
-
-  <!-- Home screen (unchanged) -->
-  <div v-else style="padding: 20px 20px 100px;">
-    <!-- Header -->
-    <div style="text-align: center; margin-bottom: 30px; padding-top: 20px;">
-      <div style="font-size: 56px;" class="animate-bounce">{{ childInfo.avatar }}</div>
-      <h2 style="font-size: 24px; margin-top: 8px;">嗨，{{ childInfo.name }}！</h2>
-    </div>
-
-    <!-- Today's progress -->
-    <div class="card" style="margin-bottom: 16px;">
-      <h3 style="margin-bottom: 12px;">📋 今日任務</h3>
-      <div v-if="progress" style="font-size: 16px;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-          <span>完成：{{ progress.completed_count }} / {{ progress.target_count }} 題</span>
-          <span v-if="progress.completion_rate >= 1" style="color: var(--success);">🎉 完成！</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="`width: ${Math.min(progress.completion_rate * 100, 100)}%`"></div>
+      <!-- 已綁定的子女列表（切換） -->
+      <div v-if="deviceChildren.length > 0" class="switch-section">
+        <h3>已綁定的子女</h3>
+        <div v-for="child in deviceChildren" :key="child.id" class="child-card" @click="selectChild(child)">
+          <span class="avatar">{{ child.avatar || '🐻' }}</span>
+          <div class="child-info">
+            <span class="child-name">{{ child.name }}</span>
+            <span class="child-parent">{{ child.parent_email }}</span>
+          </div>
+          <span class="arrow">→</span>
         </div>
       </div>
-    </div>
 
-    <!-- Review reminder -->
-    <div v-if="reviewCount > 0" class="card" style="margin-bottom: 16px; background: #FFF3E0; cursor: pointer;" @click="$router.push('/review')">
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 32px;">📖</span>
-        <div>
-          <div style="font-weight: 600;">有 {{ reviewCount }} 題需要複習</div>
-          <div style="font-size: 13px; color: #888;">點擊開始複習</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Big start button -->
-    <button class="big-btn big-btn-primary" style="margin-bottom: 16px;" @click="$router.push('/quiz')">
-      🎮 開始學習！
-    </button>
-
-    <!-- Subject shortcuts -->
-    <div class="grid grid-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-      <button class="card" style="border: none; cursor: pointer; text-align: center; font-size: 32px;" @click="startSubject('math')">
-        🔢<div style="font-size: 14px; margin-top: 4px;">數學</div>
-      </button>
-      <button class="card" style="border: none; cursor: pointer; text-align: center; font-size: 32px;" @click="startSubject('chinese')">
-        📝<div style="font-size: 14px; margin-top: 4px;">語文</div>
-      </button>
-      <button class="card" style="border: none; cursor: pointer; text-align: center; font-size: 32px;" @click="startSubject('english')">
-        🔤<div style="font-size: 14px; margin-top: 4px;">英語</div>
-      </button>
-      <button class="card" style="border: none; cursor: pointer; text-align: center; font-size: 32px;" @click="startSubject('science')">
-        🔬<div style="font-size: 14px; margin-top: 4px;">科學</div>
-      </button>
+      <button class="btn-text" @click="refreshDeviceChildren" v-if="deviceChildren.length > 0">🔄 刷新</button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { getDeviceUUID, hasActiveChild, getChildInfo, setActiveChild } from '../composables/device'
 import { childAPI } from '../composables/api'
-import { getDeviceUUID, isBound, getChildInfo } from '../composables/device'
 
 const router = useRouter()
-const bound = ref(isBound())
-const scanning = ref(false)
-const bindTab = ref('scan')
-const manualCode = ref('')
-const childName = ref('')
-const errorMsg = ref('')
-const childInfo = ref(getChildInfo())
-const progress = ref(null)
-const reviewCount = ref(0)
+const deviceUuid = getDeviceUUID()
 
-let qrScanner = null
+const loading = ref(false)
+const bindCode = ref('')
+const qrToken = ref('')
+const qrImageUrl = ref('')
+const expiresIn = ref(0)
+const todayQuestions = ref(0)
+const deviceChildren = ref([])
 
-async function startScan() {
-  errorMsg.value = ''
-  scanning.value = true
+let timer = null
 
-  const { Html5Qrcode } = await import('html5-qrcode')
+const activeChild = computed(() => hasActiveChild() ? getChildInfo() : null)
 
-  await new Promise(resolve => setTimeout(resolve, 100)) // wait for DOM
+const subjects = [
+  { key: 'math', icon: '🔢', name: '數學' },
+  { key: 'chinese', icon: '📝', name: '中文' },
+  { key: 'english', icon: '🔤', name: '英文' },
+  { key: 'science', icon: '🔬', name: '常識' },
+]
 
-  qrScanner = new Html5Qrcode('qr-reader')
+async function generateCode() {
+  loading.value = true
   try {
-    await qrScanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
-      async (decodedText) => {
-        // QR scanned successfully
-        stopScan()
-        await handleQRBind(decodedText)
-      },
-      () => {} // ignore per-frame errors
-    )
-  } catch (err) {
-    errorMsg.value = '無法開啟相機，請改用輸入綁定碼方式'
-    bindTab.value = 'code'
-    scanning.value = false
-  }
-}
-
-function stopScan() {
-  if (qrScanner) {
-    qrScanner.stop().then(() => qrScanner.clear()).catch(() => {})
-    qrScanner = null
-  }
-  scanning.value = false
-}
-
-async function handleQRBind(qrToken) {
-  scanning.value = true
-  errorMsg.value = ''
-  try {
-    const { data } = await childAPI.bind(
-      qrToken,
-      getDeviceUUID(),
-      childName.value || '小寶貝'
-    )
-    if (data.success) {
-      localStorage.setItem('childId', data.child_id)
-      localStorage.setItem('childName', data.child_name)
-      bound.value = true
-      childInfo.value = getChildInfo()
-      loadHomeData()
-    }
-  } catch (err) {
-    errorMsg.value = err.response?.data?.detail || '綁定失敗，請重試'
+    const res = await childAPI.generateBindCode(deviceUuid)
+    bindCode.value = res.data.bind_code
+    qrToken.value = res.data.qr_token
+    // Generate QR image via public API
+    const qrPayload = JSON.stringify({ token: res.data.qr_token, type: 'device_bind' })
+    qrImageUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrPayload)}`
+    // Countdown
+    const expires = new Date(res.data.expires_at).getTime()
+    updateCountdown(expires)
+    timer = setInterval(() => updateCountdown(expires), 1000)
+  } catch (e) {
+    alert('生成失敗，請重試')
   } finally {
-    scanning.value = false
+    loading.value = false
   }
 }
 
-async function handleCodeBind() {
-  if (!manualCode.value.trim()) {
-    errorMsg.value = '請輸入綁定碼'
-    return
+function updateCountdown(expiresTs) {
+  const diff = Math.floor((expiresTs - Date.now()) / 1000)
+  expiresIn.value = Math.max(0, diff)
+  if (diff <= 0 && timer) {
+    clearInterval(timer)
+    bindCode.value = ''
+    qrToken.value = ''
   }
-  scanning.value = true
-  errorMsg.value = ''
+}
+
+function copyCode() {
+  navigator.clipboard.writeText(bindCode.value)
+  alert('已複製：' + bindCode.value)
+}
+
+async function refreshDeviceChildren() {
   try {
-    const { data } = await childAPI.bindByCode(
-      manualCode.value.trim().toUpperCase(),
-      getDeviceUUID(),
-      childName.value || '小寶貝'
-    )
-    if (data.success) {
-      localStorage.setItem('childId', data.child_id)
-      localStorage.setItem('childName', data.child_name)
-      bound.value = true
-      childInfo.value = getChildInfo()
-      loadHomeData()
-    }
-  } catch (err) {
-    errorMsg.value = err.response?.data?.detail || '綁定碼無效或已過期'
-  } finally {
-    scanning.value = false
+    const res = await childAPI.getDeviceChildren(deviceUuid)
+    deviceChildren.value = res.data
+  } catch (e) {
+    // ignore
   }
 }
 
-function startSubject(subject) {
-  localStorage.setItem('quizSubject', subject)
-  router.push('/quiz')
+function selectChild(child) {
+  setActiveChild({ id: child.id, name: child.name, avatar: child.avatar })
+  location.reload()
 }
 
-async function loadHomeData() {
-  if (!bound.value) return
-  try {
-    const [progressRes, reviewRes] = await Promise.all([
-      childAPI.getTodayProgress(childInfo.value.id),
-      childAPI.getReviewCount(childInfo.value.id),
-    ])
-    progress.value = progressRes.data
-    reviewCount.value = reviewRes.data.due_count
-  } catch (err) {
-    console.error('Load failed', err)
-  }
+function startQuiz(subject) {
+  router.push({ path: '/quiz', query: { subject } })
 }
 
 onMounted(() => {
-  if (bound.value) loadHomeData()
+  if (hasActiveChild()) {
+    const child = getChildInfo()
+    childAPI.getTodayProgress(child.id).then(res => {
+      todayQuestions.value = res.data.total_questions || 0
+    }).catch(() => {})
+  } else {
+    generateCode()
+    refreshDeviceChildren()
+  }
 })
 
 onUnmounted(() => {
-  stopScan()
+  if (timer) clearInterval(timer)
 })
 </script>
 
 <style scoped>
-.bind-tab {
-  padding: 10px 20px;
-  border: 2px solid #e0e0e0;
-  background: white;
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  transition: all 0.2s;
-  color: #666;
+.home { padding: 20px; max-width: 480px; margin: 0 auto; }
+
+.welcome-screen { text-align: center; }
+.child-header { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 16px; }
+.avatar { font-size: 2.5rem; }
+.name { font-size: 1.5rem; font-weight: bold; }
+
+.subject-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+.subject-card {
+  background: #fff; border: 2px solid #e0e0e0; border-radius: 16px;
+  padding: 24px; cursor: pointer; transition: all 0.2s; text-align: center;
 }
-.bind-tab.active {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: white;
+.subject-card:active { transform: scale(0.95); }
+.subject-icon { display: block; font-size: 2rem; margin-bottom: 8px; }
+.subject-name { font-size: 1.1rem; font-weight: 600; }
+
+.bind-screen { text-align: center; padding-top: 20px; }
+.hint { color: #666; font-size: 0.9rem; margin-bottom: 20px; }
+
+.bind-code-box { margin: 16px 0; }
+.bind-code {
+  font-size: 2rem; font-weight: bold; letter-spacing: 8px;
+  background: #f0f7ff; border: 2px dashed #4a9eff; border-radius: 12px;
+  padding: 16px 24px; display: inline-block;
 }
-.code-input {
-  text-transform: uppercase;
+.btn-copy { margin-top: 8px; background: none; border: none; color: #4a9eff; cursor: pointer; font-size: 0.9rem; }
+.expire-text { color: #999; font-size: 0.8rem; margin-top: 4px; }
+
+.qr-box { margin: 16px auto; }
+.qr-img { border-radius: 12px; border: 1px solid #e0e0e0; }
+
+.btn-primary {
+  background: #4a9eff; color: white; border: none; border-radius: 12px;
+  padding: 12px 32px; font-size: 1rem; cursor: pointer; margin-top: 12px;
 }
+.btn-primary:disabled { opacity: 0.5; }
+
+.btn-secondary {
+  background: #f0f0f0; border: none; border-radius: 12px;
+  padding: 10px 24px; font-size: 0.9rem; cursor: pointer; margin-top: 16px;
+}
+
+.switch-section { margin-top: 32px; text-align: left; }
+.switch-section h3 { font-size: 1rem; margin-bottom: 12px; }
+.child-card {
+  display: flex; align-items: center; gap: 12px; background: #fff;
+  border: 1px solid #e0e0e0; border-radius: 12px; padding: 12px 16px;
+  margin-bottom: 8px; cursor: pointer; transition: all 0.2s;
+}
+.child-card:active { background: #f0f7ff; }
+.child-info { flex: 1; display: flex; flex-direction: column; }
+.child-name { font-weight: 600; }
+.child-parent { font-size: 0.8rem; color: #999; }
+.arrow { color: #ccc; }
+
+.btn-text { background: none; border: none; color: #4a9eff; cursor: pointer; font-size: 0.85rem; margin-top: 8px; }
 </style>

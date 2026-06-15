@@ -8,7 +8,7 @@
       <!-- Children cards -->
       <div v-if="children.length === 0" class="card" style="text-align: center; padding: 40px;">
         <p style="margin-bottom: 16px; color: var(--text-light);">還沒有綁定子女</p>
-        <router-link to="/bind" class="btn btn-primary">立即綁定子女</router-link>
+        <router-link to="/bind" class="btn btn-primary">📷 掃碼 / 輸入碼綁定</router-link>
       </div>
 
       <div v-else>
