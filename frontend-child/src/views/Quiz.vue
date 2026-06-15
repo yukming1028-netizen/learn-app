@@ -110,10 +110,8 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { childAPI } from '../composables/api'
-import { getChildInfo } from '../composables/device'
 
 const router = useRouter()
-const childInfo = getChildInfo()
 
 const loading = ref(true)
 const currentQuestion = ref(null)
@@ -147,7 +145,7 @@ async function loadQuestion() {
 
   const subject = localStorage.getItem('quizSubject') || null
   try {
-    const { data } = await childAPI.getNextQuestion(childInfo.id, subject)
+    const { data } = await childAPI.getNextQuestion(subject)
     currentQuestion.value = data
     if (!data) return
     startTime = Date.now()
@@ -167,7 +165,6 @@ function getOptionClass(index) {
   if (index === selectedOptIndex.value) {
     return result.value.is_correct ? 'correct' : 'wrong'
   }
-  // Highlight the correct option
   if (currentQuestion.value.options[index] === result.value.correct_answer) {
     return 'correct'
   }
@@ -192,7 +189,6 @@ async function submitAnswer(selectedAnswer) {
 
   try {
     const { data } = await childAPI.submitAnswer(
-      childInfo.id,
       currentQuestion.value.id,
       selectedAnswer,
       timeTaken,

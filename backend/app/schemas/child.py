@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class ChildCreate(BaseModel):
     name: str = "小寶貝"
-    grade: int = 1
+    grade: int = 0  # 0=學前預備, 1-6=小一至小六
     avatar: str = "🐻"
 
 
@@ -20,8 +20,8 @@ class ChildOut(BaseModel):
     parent_id: int
     name: str
     grade: int
+    grade_set_at: datetime | None = None
     avatar: str
-    device_uuid: str | None
     bound_at: datetime
     stickers: list
     total_study_minutes: int

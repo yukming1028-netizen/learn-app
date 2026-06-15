@@ -1,13 +1,16 @@
-"""Question routes: list, filter, get next adaptive question."""
+"""Question routes: list, filter, get next adaptive question, submit answer.
+Child auth: device_token + X-Child-Id."""
 import random
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.question import Question
 from app.models.answer_record import AnswerRecord
+from app.models.child import Child
 from app.schemas.question import QuestionOut, QuestionBrief, AnswerSubmit, AnswerResult, NextQuestionRequest
 from app.services.adaptive_engine import get_recommended_difficulty, update_ability
 from app.services.review_engine import update_review_schedule, quality_from_answer, remove_review_if_mastered
+from app.routers.deps import get_child_from_device_token
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
@@ -31,15 +34,16 @@ def list_questions(
 
 
 @router.post("/next", response_model=QuestionBrief | None)
-def get_next_question(req: NextQuestionRequest, db: Session = Depends(get_db)):
-    """Get the next adaptive question for a child."""
-    child_id = req.child_id
-
-    # Get recommended difficulty
+def get_next_question(
+    req: NextQuestionRequest,
+    child: Child = Depends(get_child_from_device_token),
+    db: Session = Depends(get_db),
+):
+    """Get the next adaptive question for the active child."""
+    child_id = child.id
     recommended = get_recommended_difficulty(db, child_id, req.subject or "math")
     subject = req.subject or "math"
 
-    # Find recently answered question IDs (avoid repeats)
     recent_ids = set(
         r.question_id for r in
         db.query(AnswerRecord)
@@ -49,7 +53,6 @@ def get_next_question(req: NextQuestionRequest, db: Session = Depends(get_db)):
         .all()
     )
 
-    # Try exact difficulty match first
     candidates = (
         db.query(Question)
         .filter(Question.subject == subject, Question.difficulty == recommended)
@@ -57,7 +60,6 @@ def get_next_question(req: NextQuestionRequest, db: Session = Depends(get_db)):
     )
     candidates = [c for c in candidates if c.id not in recent_ids]
 
-    # If none, try ±1 difficulty
     if not candidates:
         for diff_offset in [-1, 1, -2, 2]:
             candidates = (
@@ -69,12 +71,10 @@ def get_next_question(req: NextQuestionRequest, db: Session = Depends(get_db)):
             if candidates:
                 break
 
-    # If still none, get any question for this subject
     if not candidates:
         candidates = db.query(Question).filter(Question.subject == subject).all()
         candidates = [c for c in candidates if c.id not in recent_ids]
 
-    # If still none, get any question
     if not candidates:
         candidates = db.query(Question).all()
 
@@ -86,21 +86,23 @@ def get_next_question(req: NextQuestionRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/answer", response_model=AnswerResult)
-def submit_answer(payload: AnswerSubmit, db: Session = Depends(get_db)):
+def submit_answer(
+    payload: AnswerSubmit,
+    child: Child = Depends(get_child_from_device_token),
+    db: Session = Depends(get_db),
+):
     """Submit an answer and get feedback + reward."""
     question = db.query(Question).filter(Question.id == payload.question_id).first()
     if not question:
         raise HTTPException(status_code=404, detail="找不到題目")
 
-    # Server determines correctness if client didn't provide it
     if payload.is_correct is None:
         is_correct = payload.selected_answer.strip() == question.answer.strip()
     else:
         is_correct = payload.is_correct
 
-    # Record the answer
     record = AnswerRecord(
-        child_id=payload.child_id,
+        child_id=child.id,
         question_id=payload.question_id,
         subject=question.subject,
         is_correct=is_correct,
@@ -109,39 +111,31 @@ def submit_answer(payload: AnswerSubmit, db: Session = Depends(get_db)):
     )
     db.add(record)
 
-    # Update adaptive ability
     new_theta = update_ability(
-        db, payload.child_id, question.subject,
+        db, child.id, question.subject,
         is_correct, payload.time_taken_sec, question.avg_time_sec,
     )
 
-    # Update child totals
-    from app.models.child import Child
-    child = db.query(Child).filter(Child.id == payload.child_id).first()
-    if child:
-        child.total_questions += 1
-        if is_correct:
-            child.total_correct += 1
-        child.total_study_minutes = max(0, int(child.total_study_minutes + payload.time_taken_sec / 60))
+    child.total_questions += 1
+    if is_correct:
+        child.total_correct += 1
+    child.total_study_minutes = max(0, int(child.total_study_minutes + payload.time_taken_sec / 60))
 
-        # Reward: sticker every 5 correct answers
-        reward_msg = None
-        new_sticker = None
-        if is_correct and child.total_correct % 5 == 0:
-            stickers_pool = ["🌟", "🎉", "🏅", "🌈", "⭐", "💎", "🔥", "🦄", "🎈"]
-            new_sticker = random.choice(stickers_pool)
-            if new_sticker not in child.stickers:
-                child.stickers = child.stickers + [new_sticker]
-            reward_msg = f"太棒了！獲得了 {new_sticker} 貼紙！"
+    reward_msg = None
+    new_sticker = None
+    if is_correct and child.total_correct % 5 == 0:
+        stickers_pool = ["🌟", "🎉", "🏅", "🌈", "⭐", "💎", "🔥", "🦄", "🎈"]
+        new_sticker = random.choice(stickers_pool)
+        if new_sticker not in child.stickers:
+            child.stickers = child.stickers + [new_sticker]
+        reward_msg = f"太棒了！獲得了 {new_sticker} 貼紙！"
 
-    # Update spaced repetition review schedule
     time_ratio = payload.time_taken_sec / max(question.avg_time_sec, 1.0)
     quality = quality_from_answer(is_correct, time_ratio)
-    update_review_schedule(db, payload.child_id, payload.question_id, quality)
+    update_review_schedule(db, child.id, payload.question_id, quality)
 
-    # Remove from review if mastered (3 consecutive correct)
     if is_correct:
-        remove_review_if_mastered(db, payload.child_id, payload.question_id)
+        remove_review_if_mastered(db, child.id, payload.question_id)
 
     db.commit()
 

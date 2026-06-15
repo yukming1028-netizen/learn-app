@@ -1,4 +1,4 @@
-"""Children routes: CRUD + stats."""
+"""Children routes: CRUD + stats + grade management."""
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +8,8 @@ from app.database import get_db
 from app.models.parent import Parent
 from app.models.child import Child
 from app.models.answer_record import AnswerRecord
-from app.schemas.child import ChildOut, ChildUpdate, ChildStats
+from app.schemas.child import ChildCreate, ChildOut, ChildUpdate, ChildStats
+from app.utils.grade import grade_label, check_grade_update
 from app.routers.deps import get_current_parent
 
 router = APIRouter(prefix="/api/children", tags=["children"])
@@ -32,6 +33,27 @@ def list_children(parent: Parent = Depends(get_current_parent), db: Session = De
     return result
 
 
+@router.post("", response_model=ChildOut)
+def create_child(payload: ChildCreate, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
+    """Create a new child profile."""
+    count = db.query(Child).filter(Child.parent_id == parent.id).count()
+    if count >= 3:
+        raise HTTPException(status_code=400, detail="已達最大子女數限制（3名）")
+    now = datetime.utcnow()
+    child = Child(
+        parent_id=parent.id,
+        name=payload.name,
+        grade=payload.grade,
+        avatar=payload.avatar or "🐻",
+        grade_set_at=now,
+        bound_at=now,
+    )
+    db.add(child)
+    db.commit()
+    db.refresh(child)
+    return child
+
+
 @router.get("/{child_id}", response_model=ChildOut)
 def get_child(child_id: int, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
     child = _get_child_or_404(db, child_id, parent.id)
@@ -43,7 +65,12 @@ def get_child(child_id: int, parent: Parent = Depends(get_current_parent), db: S
 @router.put("/{child_id}", response_model=ChildOut)
 def update_child(child_id: int, payload: ChildUpdate, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
     child = _get_child_or_404(db, child_id, parent.id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    # If grade changed, update grade_set_at and clear dismissal
+    if "grade" in data and data["grade"] != child.grade:
+        data["grade_set_at"] = datetime.utcnow()
+        data["grade_prompt_dismissed_at"] = None
+    for field, value in data.items():
         setattr(child, field, value)
     db.commit()
     db.refresh(child)
@@ -55,7 +82,42 @@ def delete_child(child_id: int, parent: Parent = Depends(get_current_parent), db
     child = _get_child_or_404(db, child_id, parent.id)
     db.delete(child)
     db.commit()
-    return {"success": True, "message": "已解除綁定"}
+    return {"success": True, "message": "已刪除子女"}
+
+
+# ─── Grade update prompts ───
+
+@router.get("/{child_id}/grade-check")
+def check_child_grade(child_id: int, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
+    """Check if grade update is needed."""
+    child = _get_child_or_404(db, child_id, parent.id)
+    result = check_grade_update(child.grade, child.grade_set_at, child.grade_prompt_dismissed_at)
+    result["child_name"] = child.name
+    result["grade_label"] = grade_label(child.grade)
+    return result
+
+
+@router.post("/{child_id}/grade/confirm")
+def confirm_grade_update(child_id: int, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
+    """Confirm grade upgrade."""
+    child = _get_child_or_404(db, child_id, parent.id)
+    result = check_grade_update(child.grade, child.grade_set_at, child.grade_prompt_dismissed_at)
+    if not result["needs_prompt"]:
+        return {"success": True, "message": "無需更新", "grade": child.grade}
+    child.grade = result["suggested_grade"]
+    child.grade_set_at = datetime.utcnow()
+    child.grade_prompt_dismissed_at = None
+    db.commit()
+    return {"success": True, "message": f"已升級到{result['suggested_label']}", "grade": child.grade}
+
+
+@router.post("/{child_id}/grade/dismiss")
+def dismiss_grade_update(child_id: int, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)):
+    """Dismiss grade upgrade prompt until next September."""
+    child = _get_child_or_404(db, child_id, parent.id)
+    child.grade_prompt_dismissed_at = datetime.utcnow()
+    db.commit()
+    return {"success": True, "message": "已取消，下次9月1日再提示"}
 
 
 @router.get("/{child_id}/stats", response_model=ChildStats)

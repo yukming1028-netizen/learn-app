@@ -36,7 +36,6 @@ class QuestionBrief(BaseModel):
 
 
 class AnswerSubmit(BaseModel):
-    child_id: int
     question_id: int
     selected_answer: str
     time_taken_sec: float = 0.0
@@ -52,5 +51,4 @@ class AnswerResult(BaseModel):
 
 
 class NextQuestionRequest(BaseModel):
-    child_id: int
     subject: str | None = None

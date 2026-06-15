@@ -1,5 +1,5 @@
 """Grade calculation utilities."""
-from datetime import datetime, timezone
+from datetime import datetime
 
 GRADE_LABELS = {
     0: "小一學前預備",
@@ -18,24 +18,41 @@ def grade_label(grade: int) -> str:
     return GRADE_LABELS.get(grade, f"Grade {grade}")
 
 
-def compute_current_grade(base_grade: int, base_date: datetime) -> tuple[int, str]:
-    """Compute current grade based on base grade + date.
-    
-    Every September 1st since base_date, grade advances by 1.
-    Caps at MAX_GRADE (6=小六).
-    
-    Returns (current_grade, label).
-    """
-    # Normalize: strip timezone to avoid naive vs aware comparison errors
+def count_sept_firsts_since(base_date: datetime) -> int:
+    """Count how many September 1sts have passed since base_date (up to now)."""
     now = datetime.utcnow()
     if base_date.tzinfo is not None:
         base_date = base_date.replace(tzinfo=None)
     
-    sept_firsts = 0
+    count = 0
     for year in range(base_date.year, now.year + 1):
         sept_1 = datetime(year, 9, 1)
         if sept_1 > base_date and sept_1 <= now:
-            sept_firsts += 1
+            count += 1
+    return count
+
+
+def check_grade_update(grade: int, grade_set_at: datetime, dismissed_at: datetime | None) -> dict:
+    """Check if a grade update prompt should be shown.
     
-    current_grade = min(base_grade + sept_firsts, MAX_GRADE)
-    return current_grade, grade_label(current_grade)
+    Returns: {
+        "needs_prompt": bool,
+        "suggested_grade": int,
+        "current_grade": int,
+        "suggested_label": str,
+    }
+    """
+    # Base date for counting: dismissed_at if set, otherwise grade_set_at
+    base_date = dismissed_at or grade_set_at
+    if not base_date:
+        return {"needs_prompt": False, "suggested_grade": grade, "current_grade": grade, "suggested_label": grade_label(grade)}
+    
+    sept_firsts = count_sept_firsts_since(base_date)
+    suggested = min(grade + sept_firsts, MAX_GRADE)
+    
+    return {
+        "needs_prompt": suggested > grade,
+        "suggested_grade": suggested,
+        "current_grade": grade,
+        "suggested_label": grade_label(suggested),
+    }

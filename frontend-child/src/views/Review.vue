@@ -33,9 +33,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { childAPI } from '../composables/api'
-import { getChildInfo } from '../composables/device'
 
-const childInfo = getChildInfo()
 const reviews = ref([])
 const loading = ref(true)
 
@@ -44,7 +42,7 @@ function subjectLabel(s) { return subjectLabels[s] || s }
 
 onMounted(async () => {
   try {
-    const { data } = await childAPI.getReviewList(childInfo.id)
+    const { data } = await childAPI.getReviewList()
     reviews.value = data
   } catch (err) {
     console.error('Failed', err)

@@ -12,9 +12,9 @@ class Child(Base):
     parent_id = Column(Integer, ForeignKey("parents.id"), nullable=False, index=True)
     name = Column(String(50), default="小寶貝")
     grade = Column(Integer, default=0)  # 0=學前預備, 1=小一 ... 6=小六
-    grade_start_date = Column(DateTime, nullable=True)  # 綁定時的日期，用於計算自動升級
+    grade_set_at = Column(DateTime, default=datetime.utcnow)  # 年級設定日期（用於計算自動升級提示）
+    grade_prompt_dismissed_at = Column(DateTime, nullable=True)  # 用戶取消年級升級提示的時間
     avatar = Column(String(20), default="🐻")  # emoji
-    device_uuid = Column(String(64), nullable=True, index=True)  # Same device can have multiple children
     bound_at = Column(DateTime, default=datetime.utcnow)
     stickers = Column(JSON, default=list)  # ["🌟", "🐶", ...]
     total_study_minutes = Column(Integer, default=0)

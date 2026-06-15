@@ -1,229 +1,164 @@
 <template>
   <div class="home">
-    <!-- 已有綁定的子女 → 顯示主頁 -->
-    <div v-if="activeChild" class="welcome-screen">
-      <div class="child-header">
-        <span class="avatar">{{ activeChild.avatar }}</span>
-        <span class="name">{{ activeChild.name }}</span>
-      </div>
-      <h2>歡迎返嚟學習！</h2>
-      <p class="today-info" v-if="todayQuestions > 0">今日已完成 {{ todayQuestions }} 題</p>
-      <p class="today-info" v-else>今日仲未開始答題呀～</p>
-
-      <div class="subject-grid">
-        <button v-for="s in subjects" :key="s.key" class="subject-card" @click="startQuiz(s.key)">
-          <span class="subject-icon">{{ s.icon }}</span>
-          <span class="subject-name">{{ s.name }}</span>
-        </button>
-      </div>
-
-      <button class="btn-secondary" @click="$router.push('/settings')">⚙️ 切換 / 管理</button>
-    </div>
-
-    <!-- 未綁定 → 顯示 QR / 綁定碼等家長掃 -->
-    <div v-else class="bind-screen">
-      <h2>📱 等待家長綁定</h2>
-      <p class="hint">請家長打開家長端 App，掃描下面嘅 QR Code 或者輸入綁定碼</p>
-
-      <!-- 綁定碼 -->
-      <div class="bind-code-box" v-if="bindCode">
-        <div class="bind-code">{{ bindCode }}</div>
-        <button class="btn-copy" @click="copyCode">📋 複製</button>
-        <p class="expire-text" v-if="expiresIn > 0">{{ expiresIn }} 秒後過期</p>
-      </div>
-
-      <!-- QR Code (text placeholder) -->
-      <div class="qr-box" v-if="qrToken">
-        <img v-if="qrImageUrl" :src="qrImageUrl" alt="QR Code" class="qr-img" />
-      </div>
-
-      <button class="btn-primary" @click="generateCode" :disabled="loading">
-        {{ loading ? '生成中...' : '🔄 重新生成綁定碼' }}
-      </button>
-
-      <!-- 已綁定的子女列表（切換） -->
-      <div v-if="deviceChildren.length > 0" class="switch-section">
-        <h3>已綁定的子女</h3>
-        <div v-for="child in deviceChildren" :key="child.id" class="child-card" @click="selectChild(child)">
-          <span class="avatar">{{ child.avatar || '🐻' }}</span>
-          <div class="child-info">
-            <span class="child-name">{{ child.name }}</span>
-            <span class="child-parent">{{ child.parent_email }}</span>
-          </div>
-          <span class="arrow">→</span>
+    <!-- Header -->
+    <div class="header">
+      <div class="child-info" @click="$router.push('/select')">
+        <span class="avatar">{{ childInfo.avatar }}</span>
+        <div>
+          <div class="name">{{ childInfo.name }}</div>
+          <div class="switch-hint">切換用戶 ›</div>
         </div>
       </div>
-
-      <button class="btn-text" @click="refreshDeviceChildren" v-if="deviceChildren.length > 0">🔄 刷新</button>
     </div>
+
+    <!-- Progress card -->
+    <div class="progress-card">
+      <div class="progress-title">今日進度</div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" :style="`width: ${progressPercent}%`"></div>
+      </div>
+      <div class="progress-stats">
+        <span>{{ progress.completed_count }} / {{ progress.target_count }} 題</span>
+        <span v-if="progress.accuracy_today">正確率 {{ Math.round(progress.accuracy_today * 100) }}%</span>
+      </div>
+    </div>
+
+    <!-- Subject selection -->
+    <div class="section">
+      <h3>選擇科目</h3>
+      <div class="subjects">
+        <button
+          v-for="subj in subjects"
+          :key="subj.key"
+          :class="['subject-btn', { active: selectedSubject === subj.key }]"
+          @click="selectedSubject = subj.key"
+        >
+          <span class="subj-icon">{{ subj.icon }}</span>
+          <span class="subj-name">{{ subj.name }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Start button -->
+    <button class="start-btn" @click="startQuiz">
+      🚀 開始答題
+    </button>
+
+    <!-- Review shortcut -->
+    <button v-if="reviewCount > 0" class="review-btn" @click="$router.push('/review')">
+      📖 有 {{ reviewCount }} 題錯題待複習
+    </button>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDeviceUUID, hasActiveChild, getChildInfo, setActiveChild } from '../composables/device'
+import { getActiveChild } from '../composables/device'
 import { childAPI } from '../composables/api'
 
 const router = useRouter()
-const deviceUuid = getDeviceUUID()
+const childInfo = getActiveChild()
 
-const loading = ref(false)
-const bindCode = ref('')
-const qrToken = ref('')
-const qrImageUrl = ref('')
-const expiresIn = ref(0)
-const todayQuestions = ref(0)
-const deviceChildren = ref([])
-
-let timer = null
-
-const activeChild = computed(() => hasActiveChild() ? getChildInfo() : null)
+const progress = ref({ completed_count: 0, target_count: 5, accuracy_today: 0 })
+const reviewCount = ref(0)
+const selectedSubject = ref(null)
 
 const subjects = [
   { key: 'math', icon: '🔢', name: '數學' },
-  { key: 'chinese', icon: '📝', name: '中文' },
-  { key: 'english', icon: '🔤', name: '英文' },
-  { key: 'science', icon: '🔬', name: '常識' },
+  { key: 'chinese', icon: '📝', name: '語文' },
+  { key: 'english', icon: '🔤', name: '英語' },
+  { key: 'science', icon: '🔬', name: '科學' },
 ]
 
-async function generateCode() {
-  loading.value = true
-  try {
-    const res = await childAPI.generateBindCode(deviceUuid)
-    bindCode.value = res.data.bind_code
-    qrToken.value = res.data.qr_token
-    // Generate QR image via public API
-    const qrPayload = JSON.stringify({ token: res.data.qr_token, type: 'device_bind' })
-    qrImageUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrPayload)}`
-    // Countdown
-    const expires = new Date(res.data.expires_at).getTime()
-    updateCountdown(expires)
-    timer = setInterval(() => updateCountdown(expires), 1000)
-  } catch (e) {
-    alert('生成失敗，請重試')
-  } finally {
-    loading.value = false
-  }
-}
-
-function updateCountdown(expiresTs) {
-  const diff = Math.floor((expiresTs - Date.now()) / 1000)
-  expiresIn.value = Math.max(0, diff)
-  if (diff <= 0 && timer) {
-    clearInterval(timer)
-    bindCode.value = ''
-    qrToken.value = ''
-  }
-}
-
-function copyCode() {
-  const text = bindCode.value
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(() => alert('已複製：' + text))
-  } else {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand('copy')
-    document.body.removeChild(ta)
-    alert('已複製：' + text)
-  }
-}
-
-async function refreshDeviceChildren() {
-  try {
-    const res = await childAPI.getDeviceChildren(deviceUuid)
-    deviceChildren.value = res.data
-  } catch (e) {
-    // ignore
-  }
-}
-
-function selectChild(child) {
-  setActiveChild({ id: child.id, name: child.name, avatar: child.avatar })
-  location.reload()
-}
-
-function startQuiz(subject) {
-  router.push({ path: '/quiz', query: { subject } })
-}
-
-onMounted(() => {
-  if (hasActiveChild()) {
-    const child = getChildInfo()
-    childAPI.getTodayProgress(child.id).then(res => {
-      todayQuestions.value = res.data.total_questions || 0
-    }).catch(() => {})
-  } else {
-    generateCode()
-    refreshDeviceChildren()
-  }
+const progressPercent = computed(() => {
+  const pct = (progress.value.completed_count / progress.value.target_count) * 100
+  return Math.min(pct, 100)
 })
 
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-})
+function startQuiz() {
+  if (selectedSubject.value) {
+    localStorage.setItem('quizSubject', selectedSubject.value)
+  } else {
+    localStorage.removeItem('quizSubject')
+  }
+  router.push('/quiz')
+}
+
+async function loadData() {
+  try {
+    const [progRes, reviewRes] = await Promise.all([
+      childAPI.getTodayProgress(),
+      childAPI.getReviewCount(),
+    ])
+    progress.value = progRes.data
+    reviewCount.value = reviewRes.data.due_count || 0
+  } catch (err) {
+    console.error('Load failed', err)
+  }
+}
+
+onMounted(loadData)
 </script>
 
 <style scoped>
-.home { padding: 20px; max-width: 480px; margin: 0 auto; }
+.home {
+  padding: 16px 20px 100px;
+  max-width: 480px;
+  margin: 0 auto;
+}
 
-.welcome-screen { text-align: center; }
-.child-header { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 16px; }
+.header { margin-bottom: 20px; }
+.child-info {
+  display: flex; align-items: center; gap: 12px;
+  cursor: pointer;
+}
 .avatar { font-size: 2.5rem; }
-.name { font-size: 1.5rem; font-weight: bold; }
+.name { font-size: 1.3rem; font-weight: bold; }
+.switch-hint { font-size: 0.8rem; color: #4a9eff; }
 
-.subject-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
-.subject-card {
-  background: #fff; border: 2px solid #e0e0e0; border-radius: 16px;
-  padding: 24px; cursor: pointer; transition: all 0.2s; text-align: center;
+.progress-card {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 16px; padding: 20px;
+  color: white; margin-bottom: 24px;
 }
-.subject-card:active { transform: scale(0.95); }
-.subject-icon { display: block; font-size: 2rem; margin-bottom: 8px; }
-.subject-name { font-size: 1.1rem; font-weight: 600; }
-
-.bind-screen { text-align: center; padding-top: 20px; }
-.hint { color: #666; font-size: 0.9rem; margin-bottom: 20px; }
-
-.bind-code-box { margin: 16px 0; }
-.bind-code {
-  font-size: 2rem; font-weight: bold; letter-spacing: 8px;
-  background: #f0f7ff; border: 2px dashed #4a9eff; border-radius: 12px;
-  padding: 16px 24px; display: inline-block;
+.progress-title { font-size: 0.9rem; opacity: 0.9; margin-bottom: 12px; }
+.progress-bar-wrap {
+  height: 10px; background: rgba(255,255,255,0.3);
+  border-radius: 5px; overflow: hidden; margin-bottom: 12px;
 }
-.btn-copy { margin-top: 8px; background: none; border: none; color: #4a9eff; cursor: pointer; font-size: 0.9rem; }
-.expire-text { color: #999; font-size: 0.8rem; margin-top: 4px; }
-
-.qr-box { margin: 16px auto; }
-.qr-img { border-radius: 12px; border: 1px solid #e0e0e0; }
-
-.btn-primary {
-  background: #4a9eff; color: white; border: none; border-radius: 12px;
-  padding: 12px 32px; font-size: 1rem; cursor: pointer; margin-top: 12px;
+.progress-bar-fill {
+  height: 100%; background: white; border-radius: 5px;
+  transition: width 0.5s;
 }
-.btn-primary:disabled { opacity: 0.5; }
+.progress-stats { display: flex; justify-content: space-between; font-size: 0.85rem; }
 
-.btn-secondary {
-  background: #f0f0f0; border: none; border-radius: 12px;
-  padding: 10px 24px; font-size: 0.9rem; cursor: pointer; margin-top: 16px;
+.section { margin-bottom: 24px; }
+.section h3 { font-size: 1rem; margin-bottom: 12px; }
+.subjects {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
 }
-
-.switch-section { margin-top: 32px; text-align: left; }
-.switch-section h3 { font-size: 1rem; margin-bottom: 12px; }
-.child-card {
-  display: flex; align-items: center; gap: 12px; background: #fff;
-  border: 1px solid #e0e0e0; border-radius: 12px; padding: 12px 16px;
-  margin-bottom: 8px; cursor: pointer; transition: all 0.2s;
+.subject-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 16px; border-radius: 14px; border: 2px solid #e0e0e0;
+  background: white; cursor: pointer; transition: all 0.15s;
 }
-.child-card:active { background: #f0f7ff; }
-.child-info { flex: 1; display: flex; flex-direction: column; }
-.child-name { font-weight: 600; }
-.child-parent { font-size: 0.8rem; color: #999; }
-.arrow { color: #ccc; }
+.subject-btn.active { border-color: #667eea; background: #f0f0ff; }
+.subj-icon { font-size: 2rem; }
+.subj-name { font-size: 0.9rem; color: #555; }
 
-.btn-text { background: none; border: none; color: #4a9eff; cursor: pointer; font-size: 0.85rem; margin-top: 8px; }
+.start-btn {
+  width: 100%; padding: 16px; font-size: 1.2rem;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; border: none; border-radius: 14px;
+  cursor: pointer; font-weight: 600;
+}
+.start-btn:active { transform: scale(0.98); }
+
+.review-btn {
+  width: 100%; margin-top: 12px; padding: 12px;
+  background: #FFF3E0; border: 1px solid #FFE0B2;
+  border-radius: 12px; cursor: pointer;
+  color: #E65100; font-size: 0.95rem;
+}
 </style>

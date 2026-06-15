@@ -6,7 +6,7 @@
       </transition>
     </router-view>
 
-    <!-- Bottom nav (only when a child is active) -->
+    <!-- Bottom nav (only when a child is active, not on select/quiz pages) -->
     <div v-if="showNav" class="bottom-nav">
       <button :class="['nav-item', { active: $route.name === 'Home' }]" @click="$router.push('/')">
         <span class="nav-icon">🏠</span> 主頁
@@ -15,7 +15,7 @@
         <span class="nav-icon">📖</span> 錯題本
       </button>
       <button :class="['nav-item', { active: $route.name === 'Rewards' }]" @click="$router.push('/rewards')">
-        <span class="nav-icon">🎁</span> 我的獎勵
+        <span class="nav-icon">🎁</span> 獎勵
       </button>
       <button :class="['nav-item', { active: $route.name === 'Settings' }]" @click="$router.push('/settings')">
         <span class="nav-icon">⚙️</span> 設置
@@ -25,15 +25,13 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { hasActiveChild } from './composables/device'
 
 const route = useRoute()
-const isQuizPage = computed(() => route.name === 'Quiz')
-// Reactive: check on each route change
-const childActive = computed(() => hasActiveChild())
-const showNav = computed(() => childActive.value && !isQuizPage.value)
+const noNavRoutes = ['UserSelect', 'Quiz']
+const showNav = computed(() => hasActiveChild() && !noNavRoutes.includes(route.name))
 </script>
 
 <style>

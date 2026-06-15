@@ -1,4 +1,6 @@
-// Generate or retrieve device UUID
+// Device management — UUID, device_token, active child
+
+// ─── Device UUID (persists per physical device) ───
 export function getDeviceUUID() {
   let uuid = localStorage.getItem('deviceUUID')
   if (!uuid) {
@@ -8,44 +10,55 @@ export function getDeviceUUID() {
   return uuid
 }
 
-// Get current active child ID
-export function getChildId() {
-  return localStorage.getItem('childId')
+// ─── Device Token (32-char hex, from server after parent binds) ───
+export function getDeviceToken() {
+  return localStorage.getItem('deviceToken')
+}
+export function setDeviceToken(token) {
+  localStorage.setItem('deviceToken', token)
+}
+export function clearDeviceToken() {
+  localStorage.removeItem('deviceToken')
 }
 
-// Get current active child info
-export function getChildInfo() {
+// ─── Active Child (selected on UserSelect page) ───
+export function getActiveChildId() {
+  const id = localStorage.getItem('activeChildId')
+  return id ? parseInt(id) : null
+}
+
+export function getActiveChild() {
+  const id = getActiveChildId()
+  if (!id) return null
   return {
-    id: parseInt(localStorage.getItem('childId')) || null,
-    name: localStorage.getItem('childName') || '小寶貝',
-    avatar: localStorage.getItem('childAvatar') || '🐻',
+    id,
+    name: localStorage.getItem('activeChildName') || '小寶貝',
+    avatar: localStorage.getItem('activeChildAvatar') || '🐻',
   }
 }
 
-// Set active child
 export function setActiveChild(child) {
-  localStorage.setItem('childId', child.id)
-  localStorage.setItem('childName', child.name)
-  localStorage.setItem('childAvatar', child.avatar || '🐻')
+  localStorage.setItem('activeChildId', child.id)
+  localStorage.setItem('activeChildName', child.name)
+  localStorage.setItem('activeChildAvatar', child.avatar || '🐻')
 }
 
-// Check if a child is selected
-export function hasActiveChild() {
-  return !!localStorage.getItem('childId')
-}
-
-// Clear active child selection (not unbind, just deselect)
 export function clearActiveChild() {
-  localStorage.removeItem('childId')
-  localStorage.removeItem('childName')
-  localStorage.removeItem('childAvatar')
+  localStorage.removeItem('activeChildId')
+  localStorage.removeItem('activeChildName')
+  localStorage.removeItem('activeChildAvatar')
 }
 
-// Compatibility: keep old function name
-export function isBound() {
-  return hasActiveChild()
-}
-
-export function clearBinding() {
+// ─── Full reset (device unbound) ───
+export function clearAll() {
+  clearDeviceToken()
   clearActiveChild()
+}
+
+// ─── State checks ───
+export function hasDeviceToken() {
+  return !!getDeviceToken()
+}
+export function hasActiveChild() {
+  return !!getActiveChildId()
 }

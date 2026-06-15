@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     QR_TOKEN_EXPIRE_MINUTES: int = 5
     MAX_CHILDREN_PER_PARENT: int = 3
+    MAX_DEVICES_PER_PARENT: int = 3
 
     class Config:
         env_file = ".env"

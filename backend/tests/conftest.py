@@ -55,8 +55,8 @@ def db_session():
 @pytest.fixture
 def auth_user(client):
     """Register + login, return {email, token, headers}."""
-    client.post("/api/auth/register", json={"email": "parent@test.com", "password": "testpass123"})
-    resp = client.post("/api/auth/login", json={"email": "parent@test.com", "password": "testpass123"})
+    client.post("/api/auth/register", json={"email": "parent@test.com", "password": "secret123"})
+    resp = client.post("/api/auth/login", json={"email": "parent@test.com", "password": "secret123"})
     token = resp.json()["access_token"]
     return {
         "email": "parent@test.com",
@@ -72,13 +72,23 @@ def auth_headers(auth_user):
 
 @pytest.fixture
 def child_id(client, auth_headers):
-    """Create a child via device binding flow: device generates → parent verifies."""
-    # Device generates QR/bind code
-    gen = client.post("/api/binding/device/generate", json={"device_uuid": "test-uuid-001"})
-    token = gen.json()["qr_token"]
-    # Parent verifies and binds
-    resp = client.post("/api/binding/device/verify", json={
-        "qr_token": token,
-        "child_name": "TestKid",
+    """Create a child via children API, return child_id."""
+    resp = client.post("/api/children", json={
+        "name": "TestKid",
+        "grade": 1,
     }, headers=auth_headers)
-    return resp.json()["child_id"]
+    return resp.json()["id"]
+
+
+@pytest.fixture
+def device_headers(client, auth_headers, child_id):
+    """Bind a device and return headers with device_token + child_id."""
+    # Generate + verify device
+    gen = client.post("/api/binding/device/generate", json={"device_uuid": "test-device-fixture"})
+    token = gen.json()["qr_token"]
+    verify_resp = client.post("/api/binding/device/verify", json={"qr_token": token}, headers=auth_headers)
+    device_token = verify_resp.json()["device_token"]
+    return {
+        "X-Device-Token": device_token,
+        "X-Child-Id": str(child_id),
+    }
