@@ -30,6 +30,7 @@ class QuestionBrief(BaseModel):
     content: str
     options: list
     tags: list
+    avg_time_sec: float = 30.0
 
     class Config:
         from_attributes = True

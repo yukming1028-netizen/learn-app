@@ -19,6 +19,16 @@
         <div style="font-size: 24px;">⭐ {{ correctCount }}</div>
       </div>
 
+      <!-- Timer bar -->
+      <div class="timer-bar">
+        <div class="timer-track" :class="{ 'timer-urgent': timeRemaining <= 5 }">
+          <div class="timer-fill" :style="`width: ${timerPercent}%; background: ${timerColor};`"></div>
+        </div>
+        <div class="timer-text" :class="{ 'timer-urgent-text': timeRemaining <= 5 }">
+          ⏱️ {{ formatTime(timeRemaining) }}
+        </div>
+      </div>
+
       <!-- Progress -->
       <div class="progress-bar" style="margin-bottom: 24px;">
         <div class="progress-fill" :style="`width: ${progressPercent}%`"></div>
@@ -67,7 +77,7 @@
           {{ result.is_correct ? '🎉' : '💪' }}
         </div>
         <div style="font-weight: 600; font-size: 18px; margin-bottom: 8px;">
-          {{ result.is_correct ? '答對了！好厲害！' : '沒關係，再加油！' }}
+          {{ result._timeout ? '⏰ 時間到了！' : (result.is_correct ? '答對了！好厲害！' : '沒關係，再加油！') }}
         </div>
         <div style="font-size: 14px; color: #666; margin-bottom: 4px;">
           正確答案：<strong>{{ result.correct_answer }}</strong>
@@ -107,7 +117,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { childAPI } from '../composables/api'
 
@@ -128,6 +138,13 @@ const stars = ref([])
 let startTime = 0
 let starId = 0
 
+// ─── Timer state ───
+const timeLimit = ref(30)       // seconds for current question
+const timeRemaining = ref(30)   // countdown
+const timerPercent = ref(100)
+const timerColor = ref('#4CAF50')
+let timerInterval = null
+
 const subjectLabels = { math: '🔢 數學', chinese: '📝 語文', english: '🔤 英語', science: '🔬 科學' }
 const subjectLabel = computed(() => subjectLabels[currentQuestion.value?.subject] || '')
 const difficultyStars = computed(() => '⭐'.repeat(currentQuestion.value?.difficulty || 1))
@@ -142,13 +159,22 @@ async function loadQuestion() {
   selectedOptIndex.value = -1
   inputAnswer.value = ''
   result.value = null
+  stopTimer()
 
   const subject = localStorage.getItem('quizSubject') || null
   try {
     const { data } = await childAPI.getNextQuestion(subject)
     currentQuestion.value = data
     if (!data) return
+
+    // Set time limit based on question's avg_time (fallback 30s)
+    const avg = data.avg_time_sec || 30
+    timeLimit.value = Math.max(10, Math.ceil(avg * 1.5))  // 1.5x average, min 10s
+    timeRemaining.value = timeLimit.value
+
     startTime = Date.now()
+    startTimer()
+
     if (data.type === 'input') {
       await nextTick()
       inputRef.value?.focus()
@@ -183,6 +209,8 @@ async function submitInputAnswer() {
 }
 
 async function submitAnswer(selectedAnswer) {
+  if (answered.value) return
+  stopTimer()
   const timeTaken = (Date.now() - startTime) / 1000
   answered.value = true
   answeredCount.value++
@@ -243,9 +271,79 @@ function nextQuestion() {
 
 function exitQuiz() {
   if (confirm('確定要離開嗎？')) {
+    stopTimer()
     router.push('/')
   }
 }
 
+// ─── Timer functions ───
+function startTimer() {
+  timerPercent.value = 100
+  updateTimerColor()
+  timerInterval = setInterval(() => {
+    timeRemaining.value -= 1
+    timerPercent.value = (timeRemaining.value / timeLimit.value) * 100
+    updateTimerColor()
+    if (timeRemaining.value <= 0) {
+      stopTimer()
+      // Auto-submit empty answer (time's up)
+      if (!answered.value && currentQuestion.value) {
+        autoTimeoutSubmit()
+      }
+    }
+  }, 1000)
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
+  }
+}
+
+function updateTimerColor() {
+  const ratio = timeRemaining.value / timeLimit.value
+  if (ratio > 0.5) {
+    timerColor.value = '#4CAF50'  // green
+  } else if (ratio > 0.25) {
+    timerColor.value = '#FF9800'  // orange
+  } else {
+    timerColor.value = '#F44336'  // red
+  }
+}
+
+function formatTime(sec) {
+  const s = Math.max(0, Math.ceil(sec))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}:${r.toString().padStart(2, '0')}`
+}
+
+async function autoTimeoutSubmit() {
+  // Time's up — submit empty/wrong answer
+  answered.value = true
+  answeredCount.value++
+  const timeTaken = timeLimit.value
+  try {
+    const { data } = await childAPI.submitAnswer(
+      currentQuestion.value.id,
+      '__TIMEOUT__',
+      timeTaken,
+    )
+    result.value = { ...data, _timeout: true }
+    showWrong.value = true
+    setTimeout(() => showWrong.value = false, 400)
+  } catch (err) {
+    result.value = {
+      is_correct: false,
+      correct_answer: currentQuestion.value?.options?.[0] || '?',
+      explanation: '',
+      reward: '時間到了！下次加油！',
+      _timeout: true,
+    }
+  }
+}
+
 onMounted(loadQuestion)
+onUnmounted(stopTimer)
 </script>
