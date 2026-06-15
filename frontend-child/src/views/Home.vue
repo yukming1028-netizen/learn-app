@@ -118,8 +118,20 @@ function updateCountdown(expiresTs) {
 }
 
 function copyCode() {
-  navigator.clipboard.writeText(bindCode.value)
-  alert('已複製：' + bindCode.value)
+  const text = bindCode.value
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => alert('已複製：' + text))
+  } else {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+    alert('已複製：' + text)
+  }
 }
 
 async function refreshDeviceChildren() {
