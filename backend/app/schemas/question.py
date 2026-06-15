@@ -38,9 +38,9 @@ class QuestionBrief(BaseModel):
 class AnswerSubmit(BaseModel):
     child_id: int
     question_id: int
-    is_correct: bool
+    selected_answer: str
     time_taken_sec: float = 0.0
-    selected_answer: str | None = None
+    is_correct: bool | None = None  # If omitted, server determines from selected_answer
 
 
 class AnswerResult(BaseModel):

@@ -58,6 +58,7 @@ def test_get_next_question(client, child_id, db_session):
 
 
 def test_submit_answer_correct(client, child_id, db_session):
+    """Server should determine correctness from selected_answer."""
     q = Question(subject="math", grade=1, difficulty=1, type="choice",
                  content="2+2=?", options=["3", "4", "5", "6"], answer="4",
                  explanation="2+2=4")
@@ -68,9 +69,8 @@ def test_submit_answer_correct(client, child_id, db_session):
     resp = client.post("/api/questions/answer", json={
         "child_id": child_id,
         "question_id": q.id,
-        "is_correct": True,
-        "time_taken_sec": 5.0,
         "selected_answer": "4",
+        "time_taken_sec": 5.0,
     })
     assert resp.status_code == 200
     data = resp.json()
@@ -88,20 +88,19 @@ def test_submit_answer_wrong(client, child_id, db_session):
     resp = client.post("/api/questions/answer", json={
         "child_id": child_id,
         "question_id": q.id,
-        "is_correct": False,
-        "time_taken_sec": 20.0,
         "selected_answer": "9",
+        "time_taken_sec": 20.0,
     })
     assert resp.status_code == 200
     data = resp.json()
     assert data["is_correct"] is False
+    assert data["correct_answer"] == "10"
 
 
 def test_submit_answer_nonexistent_question(client, child_id):
     resp = client.post("/api/questions/answer", json={
         "child_id": child_id,
         "question_id": 9999,
-        "is_correct": True,
-        "time_taken_sec": 5.0,
+        "selected_answer": "42",
     })
     assert resp.status_code == 404

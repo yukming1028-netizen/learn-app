@@ -29,8 +29,8 @@ export const childAPI = {
   getNextQuestion: (childId, subject) =>
     api.post('/questions/next', { child_id: childId, subject }),
 
-  submitAnswer: (childId, questionId, isCorrect, timeTakenSec, selectedAnswer) =>
-    api.post('/questions/answer', { child_id: childId, question_id: questionId, is_correct: isCorrect, time_taken_sec: timeTakenSec, selected_answer: selectedAnswer }),
+  submitAnswer: (childId, questionId, selectedAnswer, timeTakenSec) =>
+    api.post('/questions/answer', { child_id: childId, question_id: questionId, selected_answer: selectedAnswer, time_taken_sec: timeTakenSec }),
 
   getReviewList: (childId) =>
     api.get(`/review/${childId}`),

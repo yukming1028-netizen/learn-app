@@ -22,13 +22,12 @@ def test_review_created_on_wrong_answer(client, auth_headers, child_id, db_sessi
     db_session.commit()
     db_session.refresh(q)
 
-    # Answer incorrectly
+    # Answer incorrectly (server determines correctness from selected_answer)
     client.post("/api/questions/answer", json={
         "child_id": child_id,
         "question_id": q.id,
-        "is_correct": False,
-        "time_taken_sec": 25.0,
         "selected_answer": "14",
+        "time_taken_sec": 25.0,
     })
 
     # Check review schedule was created

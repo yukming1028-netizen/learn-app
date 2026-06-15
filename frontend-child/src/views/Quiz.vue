@@ -62,7 +62,7 @@
       </div>
 
       <!-- Feedback -->
-      <div v-if="answered" class="card" :style="`text-align: center; background: ${result.is_correct ? '#e8f5e9' : '#ffebee'};`">
+      <div v-if="answered && result" class="card" :style="`text-align: center; background: ${result.is_correct ? '#e8f5e9' : '#ffebee'};`">
         <div style="font-size: 40px; margin-bottom: 8px;">
           {{ result.is_correct ? '🎉' : '💪' }}
         </div>
@@ -163,12 +163,12 @@ async function loadQuestion() {
 }
 
 function getOptionClass(index) {
-  if (!answered.value) return ''
+  if (!answered.value || !result.value) return ''
   if (index === selectedOptIndex.value) {
-    return result.value?.is_correct ? 'correct' : 'wrong'
+    return result.value.is_correct ? 'correct' : 'wrong'
   }
-  // Show correct answer
-  if (currentQuestion.value.options[index] === result.value?.correct_answer) {
+  // Highlight the correct option
+  if (currentQuestion.value.options[index] === result.value.correct_answer) {
     return 'correct'
   }
   return ''
@@ -177,47 +177,44 @@ function getOptionClass(index) {
 async function selectAnswer(option, index) {
   if (answered.value) return
   selectedOptIndex.value = index
-  const isCorrect = option === currentQuestion.value.answer
-  await submitAnswer(isCorrect, option)
+  await submitAnswer(option)
 }
 
 async function submitInputAnswer() {
   if (answered.value || !inputAnswer.value.trim()) return
-  const answer = inputAnswer.value.trim()
-  const isCorrect = answer === currentQuestion.value.answer
-  await submitAnswer(isCorrect, answer)
+  await submitAnswer(inputAnswer.value.trim())
 }
 
-async function submitAnswer(isCorrect, selectedAnswer) {
+async function submitAnswer(selectedAnswer) {
   const timeTaken = (Date.now() - startTime) / 1000
   answered.value = true
   answeredCount.value++
-
-  if (isCorrect) {
-    correctCount.value++
-    showCorrect.value = true
-    triggerStars()
-    setTimeout(() => showCorrect.value = false, 600)
-  } else {
-    showWrong.value = true
-    setTimeout(() => showWrong.value = false, 400)
-  }
 
   try {
     const { data } = await childAPI.submitAnswer(
       childInfo.id,
       currentQuestion.value.id,
-      isCorrect,
-      timeTaken,
       selectedAnswer,
+      timeTaken,
     )
     result.value = data
+
+    if (data.is_correct) {
+      correctCount.value++
+      showCorrect.value = true
+      triggerStars()
+      setTimeout(() => showCorrect.value = false, 600)
+    } else {
+      showWrong.value = true
+      setTimeout(() => showWrong.value = false, 400)
+    }
   } catch (err) {
+    console.error('Submit failed', err)
     result.value = {
-      is_correct: isCorrect,
-      correct_answer: currentQuestion.value.answer,
-      explanation: currentQuestion.value.explanation || '',
-      reward: isCorrect ? '答對了！' : '再加油！',
+      is_correct: false,
+      correct_answer: '?',
+      explanation: '',
+      reward: '提交失敗，請重試',
     }
   }
 }

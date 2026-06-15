@@ -92,12 +92,18 @@ def submit_answer(payload: AnswerSubmit, db: Session = Depends(get_db)):
     if not question:
         raise HTTPException(status_code=404, detail="找不到題目")
 
+    # Server determines correctness if client didn't provide it
+    if payload.is_correct is None:
+        is_correct = payload.selected_answer.strip() == question.answer.strip()
+    else:
+        is_correct = payload.is_correct
+
     # Record the answer
     record = AnswerRecord(
         child_id=payload.child_id,
         question_id=payload.question_id,
         subject=question.subject,
-        is_correct=payload.is_correct,
+        is_correct=is_correct,
         selected_answer=payload.selected_answer,
         time_taken_sec=payload.time_taken_sec,
     )
@@ -106,7 +112,7 @@ def submit_answer(payload: AnswerSubmit, db: Session = Depends(get_db)):
     # Update adaptive ability
     new_theta = update_ability(
         db, payload.child_id, question.subject,
-        payload.is_correct, payload.time_taken_sec, question.avg_time_sec,
+        is_correct, payload.time_taken_sec, question.avg_time_sec,
     )
 
     # Update child totals
@@ -114,14 +120,14 @@ def submit_answer(payload: AnswerSubmit, db: Session = Depends(get_db)):
     child = db.query(Child).filter(Child.id == payload.child_id).first()
     if child:
         child.total_questions += 1
-        if payload.is_correct:
+        if is_correct:
             child.total_correct += 1
         child.total_study_minutes = max(0, int(child.total_study_minutes + payload.time_taken_sec / 60))
 
         # Reward: sticker every 5 correct answers
         reward_msg = None
         new_sticker = None
-        if payload.is_correct and child.total_correct % 5 == 0:
+        if is_correct and child.total_correct % 5 == 0:
             stickers_pool = ["🌟", "🎉", "🏅", "🌈", "⭐", "💎", "🔥", "🦄", "🎈"]
             new_sticker = random.choice(stickers_pool)
             if new_sticker not in child.stickers:
@@ -130,19 +136,19 @@ def submit_answer(payload: AnswerSubmit, db: Session = Depends(get_db)):
 
     # Update spaced repetition review schedule
     time_ratio = payload.time_taken_sec / max(question.avg_time_sec, 1.0)
-    quality = quality_from_answer(payload.is_correct, time_ratio)
+    quality = quality_from_answer(is_correct, time_ratio)
     update_review_schedule(db, payload.child_id, payload.question_id, quality)
 
     # Remove from review if mastered (3 consecutive correct)
-    if payload.is_correct:
+    if is_correct:
         remove_review_if_mastered(db, payload.child_id, payload.question_id)
 
     db.commit()
 
-    feedback = "答對了！好厲害！🎉" if payload.is_correct else "沒關係，再接再厲！💪"
+    feedback = "答對了！好厲害！🎉" if is_correct else "沒關係，再接再厲！💪"
 
     return AnswerResult(
-        is_correct=payload.is_correct,
+        is_correct=is_correct,
         correct_answer=question.answer,
         explanation=question.explanation,
         reward=reward_msg or feedback,

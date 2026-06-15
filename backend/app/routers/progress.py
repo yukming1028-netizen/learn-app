@@ -6,8 +6,7 @@ from app.database import get_db
 from app.models.child import Child
 from app.models.answer_record import AnswerRecord
 from app.models.plan import LearningPlan
-from app.routers.deps import get_current_parent
-from app.models.parent import Parent
+from app.routers.deps import get_child_or_parent
 
 router = APIRouter(prefix="/api/progress", tags=["progress"])
 
@@ -15,10 +14,13 @@ router = APIRouter(prefix="/api/progress", tags=["progress"])
 @router.get("/today/{child_id}")
 def get_today_progress(
     child_id: int,
-    parent: Parent = Depends(get_current_parent),
+    auth = Depends(get_child_or_parent),
     db: Session = Depends(get_db),
 ):
-    child = db.query(Child).filter(Child.id == child_id, Child.parent_id == parent.id).first()
+    child = db.query(Child).filter(
+        Child.id == child_id,
+        Child.parent_id == auth["parent_id"],
+    ).first()
     if not child:
         raise HTTPException(status_code=404, detail="找不到子女")
 
@@ -48,7 +50,7 @@ def get_today_progress(
         plan = (
             db.query(LearningPlan)
             .filter(
-                LearningPlan.parent_id == parent.id,
+                LearningPlan.parent_id == auth["parent_id"],
                 LearningPlan.child_id == None,
                 LearningPlan.is_active == True,
             )
