@@ -190,3 +190,39 @@ body {
   from { opacity: 1; }
   to { opacity: 0.5; }
 }
+
+/* Fill-in-the-blank */
+.fill-blank-content {
+  padding: 8px 0;
+  text-align: center;
+}
+.fill-blank-input {
+  display: inline-block;
+  margin: 0 4px;
+  padding: 6px 10px;
+  border: 2px solid #d0d0d0;
+  border-bottom: 3px solid var(--secondary);
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  background: #fafafa;
+  vertical-align: middle;
+  transition: border-color 0.2s, background 0.2s;
+}
+.fill-blank-input:focus {
+  border-color: var(--primary);
+  background: #fff8e1;
+}
+.fill-blank-input:disabled {
+  opacity: 0.9;
+}
+.fill-blank-input.fill-correct {
+  border-color: var(--success);
+  background: #e8f5e9;
+}
+.fill-blank-input.fill-wrong {
+  border-color: var(--danger);
+  background: #ffebee;
+}

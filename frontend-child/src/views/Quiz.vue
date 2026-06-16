@@ -34,45 +34,87 @@
         <div class="progress-fill" :style="`width: ${progressPercent}%`"></div>
       </div>
 
-      <!-- Question card -->
-      <div class="card" :class="{ 'animate-shake': showWrong, 'animate-pop': showCorrect }" style="margin-bottom: 20px;">
-        <div style="font-size: 14px; color: #888; margin-bottom: 8px;">
-          {{ difficultyStars }}
+      <!-- ─── Choice question ─── -->
+      <template v-if="currentQuestion.type === 'choice'">
+        <div class="card" :class="{ 'animate-shake': showWrong, 'animate-pop': showCorrect }" style="margin-bottom: 20px;">
+          <div style="font-size: 14px; color: #888; margin-bottom: 8px;">
+            {{ difficultyStars }}
+          </div>
+          <h2 style="font-size: 24px; line-height: 1.6; text-align: center; padding: 16px 0;">
+            {{ currentQuestion.content }}
+          </h2>
         </div>
-        <h2 style="font-size: 24px; line-height: 1.6; text-align: center; padding: 16px 0;">
-          {{ currentQuestion.content }}
-        </h2>
-      </div>
+        <div>
+          <button
+            v-for="(opt, i) in currentQuestion.options"
+            :key="i"
+            :class="['option-btn', getOptionClass(i)]"
+            :disabled="answered"
+            @click="selectAnswer(opt, i)"
+          >
+            {{ opt }}
+          </button>
+        </div>
+      </template>
 
-      <!-- Answer options -->
-      <div v-if="currentQuestion.type === 'choice'">
-        <button
-          v-for="(opt, i) in currentQuestion.options"
-          :key="i"
-          :class="['option-btn', getOptionClass(i)]"
-          :disabled="answered"
-          @click="selectAnswer(opt, i)"
-        >
-          {{ opt }}
-        </button>
-      </div>
+      <!-- ─── Fill-in-the-blank question ─── -->
+      <template v-else-if="currentQuestion.type === 'fill_blank'">
+        <div class="card" :class="{ 'animate-shake': showWrong, 'animate-pop': showCorrect }">
+          <div style="font-size: 14px; color: #888; margin-bottom: 8px;">
+            {{ difficultyStars }} <span style="margin-left: 8px;">✏️ 填空題</span>
+          </div>
+          <!-- Render content with inline input boxes -->
+          <div class="fill-blank-content">
+            <template v-for="(part, i) in fillBlankParts" :key="i">
+              <span style="font-size: 22px; line-height: 2.4; display: inline;">{{ part }}</span>
+              <input
+                v-if="i < fillBlankParts.length - 1"
+                :ref="el => { if (el) fillInputs[i] = el }"
+                v-model="fillBlankAnswers[i]"
+                type="text"
+                class="fill-blank-input"
+                :class="{ 'fill-correct': answered && result?.is_correct, 'fill-wrong': answered && !result?.is_correct }"
+                :placeholder="`填空 ${i + 1}`"
+                :disabled="answered"
+                @keyup.enter="submitFillBlank"
+                :style="`width: ${Math.max(60, (correctAnswers[i] || '').length * 24 + 20)}px;`"
+              />
+            </template>
+          </div>
+        </div>
+        <div style="margin-top: 20px;">
+          <button v-if="!answered" class="big-btn big-btn-secondary" @click="submitFillBlank">
+            確認答案
+          </button>
+        </div>
+      </template>
 
-      <!-- Input answer -->
-      <div v-else>
-        <input
-          ref="inputRef"
-          class="input"
-          v-model="inputAnswer"
-          placeholder="輸入答案..."
-          :disabled="answered"
-          @keyup.enter="submitInputAnswer"
-          style="margin-bottom: 12px; font-size: 24px;"
-        />
-        <button v-if="!answered" class="big-btn big-btn-secondary" @click="submitInputAnswer">確認答案</button>
-      </div>
+      <!-- ─── Input question ─── -->
+      <template v-else>
+        <div class="card" :class="{ 'animate-shake': showWrong, 'animate-pop': showCorrect }" style="margin-bottom: 20px;">
+          <div style="font-size: 14px; color: #888; margin-bottom: 8px;">
+            {{ difficultyStars }}
+          </div>
+          <h2 style="font-size: 24px; line-height: 1.6; text-align: center; padding: 16px 0;">
+            {{ currentQuestion.content }}
+          </h2>
+        </div>
+        <div>
+          <input
+            ref="inputRef"
+            class="input"
+            v-model="inputAnswer"
+            placeholder="輸入答案..."
+            :disabled="answered"
+            @keyup.enter="submitInputAnswer"
+            style="margin-bottom: 12px; font-size: 24px;"
+          />
+          <button v-if="!answered" class="big-btn big-btn-secondary" @click="submitInputAnswer">確認答案</button>
+        </div>
+      </template>
 
       <!-- Feedback -->
-      <div v-if="answered && result" class="card" :style="`text-align: center; background: ${result.is_correct ? '#e8f5e9' : '#ffebee'};`">
+      <div v-if="answered && result" class="card" :style="`text-align: center; background: ${result.is_correct ? '#e8f5e9' : '#ffebee'}; margin-top: 20px;`">
         <div style="font-size: 40px; margin-bottom: 8px;">
           {{ result.is_correct ? '🎉' : '💪' }}
         </div>
@@ -138,9 +180,13 @@ const stars = ref([])
 let startTime = 0
 let starId = 0
 
+// ─── Fill-blank state ───
+const fillBlankAnswers = ref([])
+const fillInputs = ref([])
+
 // ─── Timer state ───
-const timeLimit = ref(30)       // seconds for current question
-const timeRemaining = ref(30)   // countdown
+const timeLimit = ref(30)
+const timeRemaining = ref(30)
 const timerPercent = ref(100)
 const timerColor = ref('#4CAF50')
 let timerInterval = null
@@ -153,12 +199,26 @@ const progressPercent = computed(() => {
   return Math.min((answeredCount.value / target) * 100, 100)
 })
 
+// ─── Fill-blank: split content by ___ into parts ───
+const fillBlankParts = computed(() => {
+  if (!currentQuestion.value || currentQuestion.value.type !== 'fill_blank') return []
+  return currentQuestion.value.content.split('___')
+})
+
+// ─── Fill-blank: correct answers split by | ───
+const correctAnswers = computed(() => {
+  if (!result.value) return []
+  return result.value.correct_answer.split('|')
+})
+
 async function loadQuestion() {
   loading.value = true
   answered.value = false
   selectedOptIndex.value = -1
   inputAnswer.value = ''
   result.value = null
+  fillBlankAnswers.value = []
+  fillInputs.value = []
   stopTimer()
 
   const subject = localStorage.getItem('quizSubject') || null
@@ -167,15 +227,20 @@ async function loadQuestion() {
     currentQuestion.value = data
     if (!data) return
 
-    // Set time limit based on question's avg_time (fallback 30s)
+    // Set time limit
     const avg = data.avg_time_sec || 30
-    timeLimit.value = Math.max(10, Math.ceil(avg * 1.5))  // 1.5x average, min 10s
+    timeLimit.value = Math.max(10, Math.ceil(avg * 1.5))
     timeRemaining.value = timeLimit.value
 
     startTime = Date.now()
     startTimer()
 
-    if (data.type === 'input') {
+    if (data.type === 'fill_blank') {
+      const blankCount = data.content.split('___').length - 1
+      fillBlankAnswers.value = new Array(blankCount).fill('')
+      await nextTick()
+      fillInputs.value[0]?.focus()
+    } else if (data.type === 'input') {
       await nextTick()
       inputRef.value?.focus()
     }
@@ -206,6 +271,19 @@ async function selectAnswer(option, index) {
 async function submitInputAnswer() {
   if (answered.value || !inputAnswer.value.trim()) return
   await submitAnswer(inputAnswer.value.trim())
+}
+
+async function submitFillBlank() {
+  if (answered.value) return
+  const allFilled = fillBlankAnswers.value.every(a => a.trim() !== '')
+  if (!allFilled) {
+    showWrong.value = true
+    setTimeout(() => showWrong.value = false, 300)
+    return
+  }
+  // Join answers with | to match backend format
+  const joined = fillBlankAnswers.value.map(a => a.trim()).join('|')
+  await submitAnswer(joined)
 }
 
 async function submitAnswer(selectedAnswer) {
@@ -286,7 +364,6 @@ function startTimer() {
     updateTimerColor()
     if (timeRemaining.value <= 0) {
       stopTimer()
-      // Auto-submit empty answer (time's up)
       if (!answered.value && currentQuestion.value) {
         autoTimeoutSubmit()
       }
@@ -304,11 +381,11 @@ function stopTimer() {
 function updateTimerColor() {
   const ratio = timeRemaining.value / timeLimit.value
   if (ratio > 0.5) {
-    timerColor.value = '#4CAF50'  // green
+    timerColor.value = '#4CAF50'
   } else if (ratio > 0.25) {
-    timerColor.value = '#FF9800'  // orange
+    timerColor.value = '#FF9800'
   } else {
-    timerColor.value = '#F44336'  // red
+    timerColor.value = '#F44336'
   }
 }
 
@@ -320,14 +397,19 @@ function formatTime(sec) {
 }
 
 async function autoTimeoutSubmit() {
-  // Time's up — submit empty/wrong answer
   answered.value = true
   answeredCount.value++
   const timeTaken = timeLimit.value
+  // For fill_blank, submit empty blanks
+  let answerStr = '__TIMEOUT__'
+  if (currentQuestion.value.type === 'fill_blank') {
+    const blankCount = currentQuestion.value.content.split('___').length - 1
+    answerStr = new Array(blankCount).fill('').join('|')
+  }
   try {
     const { data } = await childAPI.submitAnswer(
       currentQuestion.value.id,
-      '__TIMEOUT__',
+      answerStr,
       timeTaken,
     )
     result.value = { ...data, _timeout: true }
@@ -336,7 +418,7 @@ async function autoTimeoutSubmit() {
   } catch (err) {
     result.value = {
       is_correct: false,
-      correct_answer: currentQuestion.value?.options?.[0] || '?',
+      correct_answer: '?',
       explanation: '',
       reward: '時間到了！下次加油！',
       _timeout: true,

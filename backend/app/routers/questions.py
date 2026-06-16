@@ -97,7 +97,19 @@ def submit_answer(
         raise HTTPException(status_code=404, detail="找不到題目")
 
     if payload.is_correct is None:
-        is_correct = payload.selected_answer.strip() == question.answer.strip()
+        if question.type == "fill_blank":
+            # Multiple blanks: compare each, case-insensitive, trimmed
+            correct_parts = [a.strip() for a in question.answer.split("|")]
+            user_parts = [a.strip() for a in payload.selected_answer.split("|")]
+            # Pad user_parts if fewer blanks filled
+            while len(user_parts) < len(correct_parts):
+                user_parts.append("")
+            is_correct = all(
+                u.lower() == c.lower()
+                for u, c in zip(user_parts, correct_parts)
+            )
+        else:
+            is_correct = payload.selected_answer.strip().lower() == question.answer.strip().lower()
     else:
         is_correct = payload.is_correct
 

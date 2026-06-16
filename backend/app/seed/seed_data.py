@@ -89,6 +89,22 @@ QUESTIONS = [
     {"subject": "science", "grade": 3, "difficulty": 4, "type": "choice", "content": "光的速度大約是每秒多少？", "options": ["3萬公里", "30萬公里", "300萬公里", "300公里"], "answer": "30萬公里", "explanation": "光速約30萬公里/秒", "tags": ["物理"]},
     {"subject": "science", "grade": 3, "difficulty": 3, "type": "choice", "content": "植物通過什麼過程製造養分？", "options": ["呼吸作用", "光合作用", "蒸散作用", "消化作用"], "answer": "光合作用", "explanation": "植物通過光合作用將陽光轉化為養分", "tags": ["植物", "生物"]},
     {"subject": "science", "grade": 3, "difficulty": 5, "type": "choice", "content": "水的三態不包括下列哪個？", "options": ["固態（冰）", "液態（水）", "氣態（水蒸氣）", "等離子態"], "answer": "等離子態", "explanation": "水的三態是固態、液態、氣態", "tags": ["物理", "物質"]},
+
+    # === Grade 1 Fill-blank (小一填空題) ===
+    {"subject": "math", "grade": 1, "difficulty": 1, "type": "fill_blank", "content": "比5大又比8小的數是 ___ 和 ___", "answer": "6|7", "explanation": "5 < 6 < 7 < 8，所以是6和7", "tags": ["比較大小", "數字"], "avg_time_sec": 20},
+    {"subject": "chinese", "grade": 1, "difficulty": 1, "type": "fill_blank", "content": "「大」的反義詞是 ___", "answer": "小", "explanation": "大和小是反義詞", "tags": ["反義詞"], "avg_time_sec": 10},
+    {"subject": "english", "grade": 1, "difficulty": 2, "type": "fill_blank", "content": "I see a red ___. (蘋果)", "answer": "apple", "explanation": "蘋果的英文是 apple", "tags": ["vocabulary", "fruits"], "avg_time_sec": 15},
+
+    # === Grade 2 Fill-blank (小二填空題) ===
+    {"subject": "math", "grade": 2, "difficulty": 2, "type": "fill_blank", "content": "3 × ___ = 24，所以 ___ = 8", "answer": "8|8", "explanation": "24 ÷ 3 = 8", "tags": ["乘法", "除法"], "avg_time_sec": 20},
+    {"subject": "chinese", "grade": 2, "difficulty": 2, "type": "fill_blank", "content": "春天的相反季節是 ___ 天", "answer": "秋", "explanation": "春和秋是相反季節", "tags": ["季節", "反義詞"], "avg_time_sec": 12},
+    {"subject": "english", "grade": 2, "difficulty": 2, "type": "fill_blank", "content": "The opposite of \"hot\" is ___.", "answer": "cold", "explanation": "hot（熱）的反義詞是 cold（冷）", "tags": ["opposites", "vocabulary"], "avg_time_sec": 15},
+
+    # === Grade 3 Fill-blank (小三填空題) ===
+    {"subject": "math", "grade": 3, "difficulty": 3, "type": "fill_blank", "content": "長方形的面積 = ___ × ___", "answer": "長|寬", "explanation": "長方形面積 = 長 × 寬", "tags": ["幾何", "面積"], "avg_time_sec": 15},
+    {"subject": "chinese", "grade": 3, "difficulty": 3, "type": "fill_blank", "content": "「 ___ 尺竿頭，更進 ___ 步」", "answer": "百|一", "explanation": "百尺竿頭，更進一步，意思是在已經很好的基礎上繼續努力", "tags": ["成語"], "avg_time_sec": 15},
+    {"subject": "english", "grade": 3, "difficulty": 3, "type": "fill_blank", "content": "She ___ (go 的過去式) to the park yesterday.", "answer": "went", "explanation": "go 的過去式是 went", "tags": ["tense", "irregular"], "avg_time_sec": 12},
+    {"subject": "science", "grade": 3, "difficulty": 2, "type": "fill_blank", "content": "植物通過 ___ 作用製造養分，需要陽光和 ___", "answer": "光合|水", "explanation": "光合作用需要陽光、水和二氧化碳", "tags": ["植物", "生物"], "avg_time_sec": 20},
 ]
 
 
