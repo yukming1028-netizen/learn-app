@@ -23,7 +23,7 @@ def list_questions(
     limit: int = Query(20, le=100),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Question)
+    q = db.query(Question).filter(Question.status == "approved")
     if subject:
         q = q.filter(Question.subject == subject)
     if grade:
@@ -55,7 +55,7 @@ def get_next_question(
 
     candidates = (
         db.query(Question)
-        .filter(Question.subject == subject, Question.difficulty == recommended)
+        .filter(Question.subject == subject, Question.difficulty == recommended, Question.status == "approved")
         .all()
     )
     candidates = [c for c in candidates if c.id not in recent_ids]
@@ -64,7 +64,7 @@ def get_next_question(
         for diff_offset in [-1, 1, -2, 2]:
             candidates = (
                 db.query(Question)
-                .filter(Question.subject == subject, Question.difficulty == recommended + diff_offset)
+                .filter(Question.subject == subject, Question.difficulty == recommended + diff_offset, Question.status == "approved")
                 .all()
             )
             candidates = [c for c in candidates if c.id not in recent_ids]
@@ -72,11 +72,11 @@ def get_next_question(
                 break
 
     if not candidates:
-        candidates = db.query(Question).filter(Question.subject == subject).all()
+        candidates = db.query(Question).filter(Question.subject == subject, Question.status == "approved").all()
         candidates = [c for c in candidates if c.id not in recent_ids]
 
     if not candidates:
-        candidates = db.query(Question).all()
+        candidates = db.query(Question).filter(Question.status == "approved").all()
 
     if not candidates:
         return None

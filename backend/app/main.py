@@ -5,7 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.routers import auth, binding, children, questions, plans, progress, review, reports
+from app.routers import (
+    auth, binding, children, questions, plans, progress, review, reports,
+    ai_questions, teacher, insights,
+)
 
 
 @asynccontextmanager
@@ -42,8 +45,11 @@ app.include_router(plans.router)
 app.include_router(progress.router)
 app.include_router(review.router)
 app.include_router(reports.router)
+app.include_router(ai_questions.router)
+app.include_router(teacher.router)
+app.include_router(insights.router)
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok", "version": "3.0.0"}
