@@ -1,6 +1,7 @@
 """Auth dependencies.
 - get_current_parent: JWT for parent app
 - get_child_from_device_token: device_token + X-Child-Id for child app
+- get_current_admin: JWT for admin (backend management)
 """
 from fastapi import Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer
@@ -10,6 +11,7 @@ from app.database import get_db
 from app.models.parent import Parent
 from app.models.child import Child
 from app.models.device import Device
+from app.models.admin import Admin
 from app.services.auth_service import decode_access_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -86,3 +88,27 @@ def get_child_from_device_token(
             detail="無權訪問此子女資料",
         )
     return child
+
+
+def get_current_admin(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> Admin:
+    """Authenticate admin requests via JWT with role='admin'."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="管理員憑證無效",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if not token:
+        raise credentials_exception
+    payload = decode_access_token(token)
+    if payload is None or payload.get("role") != "admin":
+        raise credentials_exception
+    admin_id = payload.get("sub")
+    if admin_id is None:
+        raise credentials_exception
+    admin = db.query(Admin).filter(Admin.id == admin_id).first()
+    if admin is None:
+        raise credentials_exception
+    return admin

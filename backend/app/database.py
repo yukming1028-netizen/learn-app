@@ -26,9 +26,29 @@ def get_db():
 
 
 def init_db():
-    """Create tables and apply SQLite optimizations."""
+    """Create tables, apply SQLite optimizations, and ensure default admin exists."""
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
         conn.execute(text("PRAGMA busy_timeout=5000"))
         conn.commit()
+    _ensure_default_admin()
+
+
+def _ensure_default_admin():
+    """Create a default super admin if none exists."""
+    from app.models.admin import Admin
+    from app.services.auth_service import hash_password
+    db = SessionLocal()
+    try:
+        if db.query(Admin).count() == 0:
+            db.add(Admin(
+                username="admin",
+                password_hash=hash_password("admin123"),
+                display_name="超級管理員",
+                is_super=True,
+            ))
+            db.commit()
+            print("✅ Default admin created: admin / admin123")
+    finally:
+        db.close()

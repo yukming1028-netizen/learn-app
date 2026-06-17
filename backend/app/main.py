@@ -7,7 +7,7 @@ from app.database import init_db
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import (
     auth, binding, children, questions, plans, progress, review, reports,
-    ai_questions, teacher, insights,
+    ai_questions, teacher, insights, admin,
 )
 
 
@@ -48,6 +48,7 @@ app.include_router(reports.router)
 app.include_router(ai_questions.router)
 app.include_router(teacher.router)
 app.include_router(insights.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")

@@ -9,10 +9,11 @@ from app.models.review import ReviewSchedule
 from app.models.teacher import Teacher
 from app.models.classroom import Classroom, ClassroomStudent, Assignment, AssignmentProgress
 from app.models.insights import AggregatedInsights
+from app.models.admin import Admin
 
 __all__ = [
     "Parent", "Child", "Device", "Question", "LearningPlan",
     "AnswerRecord", "ChildAbility", "ReviewSchedule",
     "Teacher", "Classroom", "ClassroomStudent", "Assignment", "AssignmentProgress",
-    "AggregatedInsights",
+    "AggregatedInsights", "Admin",
 ]
