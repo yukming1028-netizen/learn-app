@@ -1,0 +1,55 @@
+{
+  "app": {
+    "title": "親子學習",
+    "subtitle": "一起快樂學習！"
+  },
+  "nav": {
+    "quiz": "答題",
+    "review": "複習",
+    "pet": "我的寵物",
+    "achievements": "成就",
+    "settings": "設定"
+  },
+  "quiz": {
+    "next": "下一題",
+    "submit": "提交",
+    "correct": "答對了！",
+    "wrong": "再試一次",
+    "timeUp": "時間到！",
+    "score": "分數",
+    "streak": "連續",
+    "days": "天"
+  },
+  "pet": {
+    "feed": "餵食",
+    "play": "玩耍",
+    "level": "等級",
+    "happiness": "快樂",
+    "hunger": "飽足",
+    "switchPet": "切換寵物"
+  },
+  "subject": {
+    "math": "數學",
+    "chinese": "語文",
+    "english": "英語",
+    "science": "科學"
+  },
+  "grade": {
+    "0": "學前預備",
+    "1": "小一",
+    "2": "小二",
+    "3": "小三",
+    "4": "小四",
+    "5": "小五",
+    "6": "小六"
+  },
+  "common": {
+    "loading": "載入中...",
+    "error": "出錯了",
+    "retry": "重試",
+    "confirm": "確認",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "刪除"
+  }
+}

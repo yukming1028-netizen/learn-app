@@ -20,3 +20,4 @@ class Question(Base):
     correct_rate = Column(Float, default=0.7)
     status = Column(String(20), default="approved")  # approved, pending, rejected
     source = Column(String(20), default="seed")  # seed, ai_generated, teacher
+    language = Column(String(10), default="zh-TW", index=True)  # zh-TW, zh-CN, en-US

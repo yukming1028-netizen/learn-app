@@ -8,6 +8,7 @@ from app.middleware.rate_limit import RateLimitMiddleware
 from app.routers import (
     auth, binding, children, questions, plans, progress, review, reports,
     ai_questions, teacher, insights, admin,
+    gamification, offline_sync, forum,
 )
 
 
@@ -49,8 +50,11 @@ app.include_router(ai_questions.router)
 app.include_router(teacher.router)
 app.include_router(insights.router)
 app.include_router(admin.router)
+app.include_router(gamification.router)
+app.include_router(offline_sync.router)
+app.include_router(forum.router)
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": "4.0.0"}

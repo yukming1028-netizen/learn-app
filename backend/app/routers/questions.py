@@ -10,6 +10,7 @@ from app.models.child import Child
 from app.schemas.question import QuestionOut, QuestionBrief, AnswerSubmit, AnswerResult, NextQuestionRequest
 from app.services.adaptive_engine import get_recommended_difficulty, update_ability
 from app.services.review_engine import update_review_schedule, quality_from_answer, remove_review_if_mastered
+from app.services.gamification_service import process_answer as process_gamification
 from app.routers.deps import get_child_from_device_token
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
@@ -20,6 +21,7 @@ def list_questions(
     subject: str | None = Query(None),
     grade: int | None = Query(None),
     difficulty: int | None = Query(None),
+    language: str | None = Query(None),
     limit: int = Query(20, le=100),
     db: Session = Depends(get_db),
 ):
@@ -30,6 +32,8 @@ def list_questions(
         q = q.filter(Question.grade == grade)
     if difficulty:
         q = q.filter(Question.difficulty == difficulty)
+    if language:
+        q = q.filter(Question.language == language)
     return q.order_by(Question.id).limit(limit).all()
 
 
@@ -43,6 +47,7 @@ def get_next_question(
     child_id = child.id
     recommended = get_recommended_difficulty(db, child_id, req.subject or "math")
     subject = req.subject or "math"
+    lang = req.language or "zh-TW"
 
     recent_ids = set(
         r.question_id for r in
@@ -55,7 +60,8 @@ def get_next_question(
 
     candidates = (
         db.query(Question)
-        .filter(Question.subject == subject, Question.difficulty == recommended, Question.status == "approved")
+        .filter(Question.subject == subject, Question.difficulty == recommended, Question.status == "approved",
+                Question.language == lang)
         .all()
     )
     candidates = [c for c in candidates if c.id not in recent_ids]
@@ -64,7 +70,8 @@ def get_next_question(
         for diff_offset in [-1, 1, -2, 2]:
             candidates = (
                 db.query(Question)
-                .filter(Question.subject == subject, Question.difficulty == recommended + diff_offset, Question.status == "approved")
+                .filter(Question.subject == subject, Question.difficulty == recommended + diff_offset,
+                        Question.status == "approved", Question.language == lang)
                 .all()
             )
             candidates = [c for c in candidates if c.id not in recent_ids]
@@ -72,11 +79,13 @@ def get_next_question(
                 break
 
     if not candidates:
-        candidates = db.query(Question).filter(Question.subject == subject, Question.status == "approved").all()
+        candidates = db.query(Question).filter(
+            Question.subject == subject, Question.status == "approved", Question.language == lang
+        ).all()
         candidates = [c for c in candidates if c.id not in recent_ids]
 
     if not candidates:
-        candidates = db.query(Question).filter(Question.status == "approved").all()
+        candidates = db.query(Question).filter(Question.status == "approved", Question.language == lang).all()
 
     if not candidates:
         return None
@@ -148,6 +157,9 @@ def submit_answer(
 
     if is_correct:
         remove_review_if_mastered(db, child.id, payload.question_id)
+
+    # V4: Gamification — achievements, pet EXP, streak
+    game_rewards = process_gamification(db, child.id, is_correct)
 
     db.commit()
 

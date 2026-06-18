@@ -53,3 +53,4 @@ class AnswerResult(BaseModel):
 
 class NextQuestionRequest(BaseModel):
     subject: str | None = None
+    language: str | None = None  # zh-TW, zh-CN, en-US

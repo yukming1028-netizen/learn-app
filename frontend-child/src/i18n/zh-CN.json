@@ -1,0 +1,55 @@
+{
+  "app": {
+    "title": "亲子学习",
+    "subtitle": "一起快乐学习！"
+  },
+  "nav": {
+    "quiz": "答题",
+    "review": "复习",
+    "pet": "我的宠物",
+    "achievements": "成就",
+    "settings": "设置"
+  },
+  "quiz": {
+    "next": "下一题",
+    "submit": "提交",
+    "correct": "答对了！",
+    "wrong": "再试一次",
+    "timeUp": "时间到！",
+    "score": "分数",
+    "streak": "连续",
+    "days": "天"
+  },
+  "pet": {
+    "feed": "喂食",
+    "play": "玩耍",
+    "level": "等级",
+    "happiness": "快乐",
+    "hunger": "饱足",
+    "switchPet": "切换宠物"
+  },
+  "subject": {
+    "math": "数学",
+    "chinese": "语文",
+    "english": "英语",
+    "science": "科学"
+  },
+  "grade": {
+    "0": "学前预备",
+    "1": "小一",
+    "2": "小二",
+    "3": "小三",
+    "4": "小四",
+    "5": "小五",
+    "6": "小六"
+  },
+  "common": {
+    "loading": "加载中...",
+    "error": "出错了",
+    "retry": "重试",
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除"
+  }
+}
